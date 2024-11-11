@@ -6,56 +6,16 @@ from langchain.schema import AIMessage, HumanMessage
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain.chains import LLMChain
-from langchain_openai import ChatOpenAI
+from langchain_bot.langchain_bdi import Belief, BotBeliefSystem
+from langchain_bot.langchain_class import FileProcessorInterface, IEmbeddings, ILanguageModel, Message, ResponseModel
+from langchain.tools import Tool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 from langchain_community.tools import BaseTool
 import inspect
 import re
-from langchain_bot.langchain_class import FileProcessorInterface, IEmbeddings, ILanguageModel, Message, ResponseModel
 
 
-class OpenAILanguageModel(ILanguageModel):
-    """
-    Clase que implementa la interfaz ILanguageModel para interactuar con los modelos de lenguaje de OpenAI.
-    Proporciona funcionalidades para generar respuestas y contar tokens.
-    """
-
-    def __init__(self, api_key: str, model_name: str = "gpt-4o-mini", temperature: float = 0.7):
-        """
-        Inicializa el modelo de lenguaje de OpenAI.
-        
-        Args:
-            api_key (str): Clave API de OpenAI
-            model_name (str): Nombre del modelo a utilizar
-            temperature (float): Temperatura para la generación de respuestas
-        """
-        self.model = ChatOpenAI(temperature=temperature, model_name=model_name, api_key=api_key)
-        self.tokenizer = tiktoken.encoding_for_model(model_name)
-
-    def get_response(self, prompt: str) -> str:
-        """
-        Genera una respuesta basada en el prompt proporcionado.
-        
-        Args:
-            prompt (str): Texto de entrada para generar la respuesta
-            
-        Returns:
-            str: Respuesta generada por el modelo
-        """
-        return self.model.predict(prompt)
-
-    def count_tokens(self, text: str) -> int:
-        """
-        Cuenta el número de tokens en un texto dado.
-        
-        Args:
-            text (str): Texto para contar tokens
-            
-        Returns:
-            int: Número de tokens en el texto
-        """
-        return len(self.tokenizer.encode(text))
 
 
 class LangChainBot:
@@ -64,7 +24,7 @@ class LangChainBot:
     memoria de conversación y uso de herramientas personalizadas.
     """
 
-    def __init__(self, language_model: ILanguageModel, embeddings: IEmbeddings, instructions: List[str], tools: List[BaseTool]):
+    def __init__(self, language_model: ILanguageModel, embeddings: IEmbeddings, beliefs: List[Belief], tools: List[BaseTool]):
         """
         Inicializa el bot con el modelo de lenguaje, embeddings y herramientas necesarias.
         
@@ -79,13 +39,13 @@ class LangChainBot:
         self.memory = ConversationBufferMemory(return_messages=True)
         self.memory_agent = MemorySaver()
         self.vector_store = None
-        self.instructions = instructions
         self.tools = tools
-        self.loadTools(self.tools)
-        self.conversation = self._create_conversation_chain()
-        self.agent_executor = self._create_agent_executor()
-
-    def loadTools(self, tools: List[BaseTool]):
+        self.beliefs = beliefs
+        self.belief_system = BotBeliefSystem('Hal9000', '1.0.0',beliefs_init=beliefs,tools=tools )
+        self.conversation = self.create_conversation_chain()
+        self.agent_executor = self.create_agent_executor()
+        
+    def generate_prompt_tools(self, tools: List[BaseTool]):
         """
         Carga y procesa las herramientas disponibles para el bot.
         
@@ -106,27 +66,26 @@ class LangChainBot:
                 text_tools += "No _run method found.\n"
             text_tools += "\n---\n"
 
-        encabezado = "\nEste es un listado de los tools que puedes ejecutar : "
-        instrucciones_de_uso = '''\n En el momento que desees ejecutar un tool como estos, abre 3 asteriscos y genera un orden escrita con todo los los parametros
-                                    \n Debes ser capaz de obtener todos los datos de la conversacion para usar los parametros
-                                   \n  En el caso de que no poseas una información siempre debes buscar en internet '''
-        self.instructions = self.instructions + encabezado + text_tools + instrucciones_de_uso
+        return  text_tools
 
-    def _create_conversation_chain(self):
+    def create_conversation_chain(self):
         """
         Crea la cadena de conversación con el prompt template y la memoria.
-        
-        Returns:
-            LLMChain: Cadena de conversación configurada
+        Ahora incluye el contexto del sistema de creencias.
         """
+        beliefs_context = self.belief_system.generate_prompt_context()
+        full_system_prompt = f"{beliefs_context}\n\n"
+
+        print(full_system_prompt)
+        
         prompt = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template(self.instructions),
+            SystemMessagePromptTemplate.from_template(full_system_prompt),
             MessagesPlaceholder(variable_name="history"),
             HumanMessagePromptTemplate.from_template("{input}")
         ])
         return LLMChain(llm=self.language_model.model, prompt=prompt, memory=self.memory)
 
-    def _create_agent_executor(self):
+    def create_agent_executor(self):
         """
         Crea el ejecutor del agente con las herramientas configuradas.
         

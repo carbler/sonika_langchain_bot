@@ -1,10 +1,9 @@
-from pydantic import BaseModel, Field
-from langchain.prompts import ChatPromptTemplate
+from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from typing import Dict, Any, Type
+from langchain_bot.langchain_class import ILanguageModel
 
-from apps.aichat.langchain_class import ILanguageModel
 
 class OpenAIModel(ILanguageModel):
     def __init__(self, api_key: str, model_name: str = "gpt-4o-mini", temperature: float = 0.7, validation_class: Type[BaseModel] = None,):
