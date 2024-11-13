@@ -21,3 +21,4 @@ wheels/
 *.egg
 .DS_Store
 EOL
+/myvenv/
