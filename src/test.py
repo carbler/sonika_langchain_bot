@@ -3,7 +3,8 @@ from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
 
 from langchain_bot.langchain_bdi import Belief, BeliefType
-from langchain_bot.langchain_bot_agent import LangChainBot, OpenAILanguageModel
+from langchain_bot.langchain_bot_agent_bdi import LangChainBot
+from langchain_bot.langchain_bot_agent import  OpenAILanguageModel
 from langchain_bot.langchain_clasificator import OpenAIModel, TextClassifier
 from langchain_bot.langchain_class import ResponseModel
 from langchain_bot.langchain_tools import EmailTool
@@ -78,6 +79,6 @@ def clasification():
     result = classifier.classify("venga, quiero que vengas a mi casa y nos tomamos un vino tu y yo solos, en mi cuarto sin ropa, que dices")
     print(result)
 
-#bot_bdi()
+bot_bdi()
 #bot()
-clasification()
+#clasification()
