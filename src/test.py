@@ -4,9 +4,9 @@ from langchain_openai import OpenAIEmbeddings
 
 from langchain_bot.langchain_bdi import Belief, BeliefType
 from langchain_bot.langchain_bot_agent_bdi import LangChainBot
-from langchain_bot.langchain_bot_agent import  OpenAILanguageModel
 from langchain_bot.langchain_clasificator import OpenAIModel, TextClassifier
 from langchain_bot.langchain_class import ResponseModel
+from langchain_bot.langchain_models import OpenAILanguageModel
 from langchain_bot.langchain_tools import EmailTool
 from langchain_community.tools.tavily_search import TavilySearchResults
 from pydantic import BaseModel, Field
