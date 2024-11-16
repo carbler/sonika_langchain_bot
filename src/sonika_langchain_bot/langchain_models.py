@@ -1,6 +1,6 @@
 from langchain_openai import ChatOpenAI
 import tiktoken
-from langchain_bot.langchain_class import ILanguageModel
+from sonika_langchain_bot.langchain_class import ILanguageModel
 
 
 class OpenAILanguageModel(ILanguageModel):

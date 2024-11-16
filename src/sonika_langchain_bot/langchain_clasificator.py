@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from typing import Dict, Any, Type
-from langchain_bot.langchain_class import ILanguageModel
+from sonika_langchain_bot.langchain_class import ILanguageModel
 
 
 class OpenAIModel(ILanguageModel):

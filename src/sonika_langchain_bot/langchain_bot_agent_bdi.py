@@ -6,8 +6,8 @@ from langchain.schema import AIMessage, HumanMessage
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain.chains import LLMChain
-from langchain_bot.langchain_bdi import Belief, BotBeliefSystem
-from langchain_bot.langchain_class import FileProcessorInterface, IEmbeddings, ILanguageModel, Message, ResponseModel
+from sonika_langchain_bot.langchain_bdi import Belief, BotBeliefSystem
+from sonika_langchain_bot.langchain_class import FileProcessorInterface, IEmbeddings, ILanguageModel, Message, ResponseModel
 from langchain.tools import Tool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
