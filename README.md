@@ -18,7 +18,6 @@ Crea un archivo `.env` en la raíz de tu proyecto con las siguientes variables:
 
 ```env
 OPENAI_API_KEY=tu_api_key_aqui
-TAVILY_API_KEY=tu_api_key_tavily_aqui
 ```
 
 ## Características principales
