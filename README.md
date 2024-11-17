@@ -24,7 +24,7 @@ OPENAI_API_KEY=tu_api_key_aqui
 
 - Bot conversacional con arquitectura BDI
 - Clasificación de texto
-- Execusion de código personalizado por medio de tools
+- Ejecución de código personalizado por medio de tools
 
 ## Uso básico
 
@@ -35,12 +35,12 @@ from sonika_langchain_bot.langchain_bdi import Belief, BeliefType
 from sonika_langchain_bot.langchain_bot_agent_bdi import LangChainBot
 from sonika_langchain_bot.langchain_models import OpenAILanguageModel
 from langchain_openai import OpenAIEmbeddings
-<>
+
 # Inicializar el modelo de lenguaje
 language_model = OpenAILanguageModel(api_key, model_name='gpt-4-mini-2024-07-18', temperature=1)
 embeddings = OpenAIEmbeddings(api_key=api_key)
 
-# Configurar herramientas
+# Configurar herramientas propias o de terceros
 search = TavilySearchResults(max_results=2, api_key=api_key_tavily)
 tools = [search]
 
