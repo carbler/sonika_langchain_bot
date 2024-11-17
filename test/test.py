@@ -39,28 +39,6 @@ def bot_bdi():
 
     print(bot_response)
 
-def bot():
-    # Obtener claves de API desde el archivo .env
-    api_key = os.getenv("OPENAI_API_KEY")
-    api_key_tavily = os.getenv("TAVILY_API_KEY")
-
-    language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini-2024-07-18', temperature=1)
-    embeddings = OpenAIEmbeddings(api_key=api_key)
-
-    # Configuración de herramientas y bots
-    search = TavilySearchResults(max_results=2, api_key=api_key_tavily)
-    email_tool = EmailTool()
-    
-    tools =[search, email_tool]
-    bot = LangChainBot(language_model, embeddings, instructions="Eres un bot de telegram", tools=tools)
-
-    user_message = 'Hola como te llamas?'
-    # Obtener la respuesta del bot
-    response_model: ResponseModel = bot.get_response(user_message)
-    bot_response = response_model.response
-
-    print(bot_response)
-
 # Definir la clase 'Classification' con Pydantic para validar la estructura
 class Classification(BaseModel):
     intention: str = Field()
@@ -82,5 +60,4 @@ def clasification():
     print(result)
 
 bot_bdi()
-#bot()
 #clasification()
