@@ -1,25 +1,13 @@
 from pydantic import BaseModel
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage
 from typing import Dict, Any, Type
 from sonika_langchain_bot.langchain_class import ILanguageModel
 
-
-class OpenAIModel(ILanguageModel):
-    def __init__(self, api_key: str, model_name: str = "gpt-4o-mini", temperature: float = 0.7, validation_class: Type[BaseModel] = None,):
-        self.model =  ChatOpenAI(api_key=api_key, temperature=temperature, model=model_name).with_structured_output(validation_class)
-
-    def get_response(self, prompt: str) -> str:
-        message = HumanMessage(content=prompt)
-        # Invocar el modelo con el mensaje creado
-        response = self.model.invoke([message])
-        return response
-
 # Clase para realizar la clasificación de texto
 class TextClassifier:
-    def __init__(self, api_key: str, validation_class: Type[BaseModel], llm: ILanguageModel, temperature: float = 0):
+    def __init__(self, validation_class: Type[BaseModel], llm: ILanguageModel):
         self.llm =llm
         self.validation_class = validation_class
+        self.llm.set_clasificator(validation_class=validation_class)
 
     def classify(self, text: str) -> Dict[str, Any]:
         # Crear el template del prompt
@@ -30,7 +18,7 @@ class TextClassifier:
         
         Only extract the properties mentioned in the validation class.
         """
-        response = self.llm.get_response(prompt=prompt)
+        response = self.llm.invoke(prompt=prompt)
         
         # Asegurarse de que el `response` es de la clase de validación proporcionada
         if isinstance(response, self.validation_class):

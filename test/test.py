@@ -5,12 +5,11 @@ from langchain_openai import OpenAIEmbeddings
 from sonika_langchain_bot.langchain_tools import EmailTool
 from sonika_langchain_bot.langchain_bdi import Belief, BeliefType
 from sonika_langchain_bot.langchain_bot_agent_bdi import LangChainBot
-from sonika_langchain_bot.langchain_clasificator import OpenAIModel, TextClassifier
-from sonika_langchain_bot.langchain_class import ResponseModel
+from sonika_langchain_bot.langchain_clasificator import  TextClassifier
+from sonika_langchain_bot.langchain_class import Message, ResponseModel
 from sonika_langchain_bot.langchain_models import OpenAILanguageModel
 from langchain_community.tools.tavily_search import TavilySearchResults
 from pydantic import BaseModel, Field
-from sonika_langchain_bot.langchain_models import OpenAIModel
 
 
 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
@@ -32,12 +31,17 @@ def bot_bdi():
     beliefs = [Belief(content="Eres un asistente de chat", type=BeliefType.PERSONALITY, confidence=1, source='personality')]
     bot = LangChainBot(language_model, embeddings, beliefs=beliefs, tools=tools)
 
-    user_message = 'Hola como te llamas?'
+    user_message = 'Hola como me llamo?'
+
+    bot.load_conversation_history([Message(content="Mi nombre es Erley", is_bot=False)])
     # Obtener la respuesta del bot
     response_model: ResponseModel = bot.get_response(user_message)
-    bot_response = response_model.response
+    bot_response = response_model
 
     print(bot_response)
+
+
+
 
 # Definir la clase 'Classification' con Pydantic para validar la estructura
 class Classification(BaseModel):
@@ -54,9 +58,9 @@ class Classification(BaseModel):
 
 def clasification():
     api_key = os.getenv("OPENAI_API_KEY")
-    model = OpenAIModel(api_key=api_key,validation_class=Classification)
+    model = OpenAILanguageModel(api_key=api_key)
     classifier = TextClassifier(api_key=api_key,llm=model, validation_class=Classification)
-    result = classifier.classify("venga, quiero que vengas a mi casa y nos tomamos un vino tu y yo solos, en mi cuarto sin ropa, que dices")
+    result = classifier.classify("how are you?")
     print(result)
 
 bot_bdi()

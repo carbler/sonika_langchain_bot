@@ -7,6 +7,9 @@ class ResponseModel():
         self.user_tokens = user_tokens
         self.bot_tokens = bot_tokens
         self.response = response
+    def __repr__(self):
+        return (f"ResponseModel(user_tokens={self.user_tokens}, "
+                f"bot_tokens={self.bot_tokens}, response={self.response})")
         
 # Definir la interfaz para procesar archivos
 class FileProcessorInterface(ABC):
@@ -16,7 +19,7 @@ class FileProcessorInterface(ABC):
 
 class ILanguageModel(ABC):
     @abstractmethod
-    def get_response(self, prompt: str) -> str:
+    def predict(self, prompt: str) -> str:
         pass
 
 class IEmbeddings(ABC):

@@ -37,7 +37,7 @@ from sonika_langchain_bot.langchain_models import OpenAILanguageModel
 from langchain_openai import OpenAIEmbeddings
 
 # Inicializar el modelo de lenguaje
-language_model = OpenAILanguageModel(api_key, model_name='gpt-4-mini-2024-07-18', temperature=1)
+language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini', temperature=1)
 embeddings = OpenAIEmbeddings(api_key=api_key)
 
 # Configurar herramientas propias o de terceros
