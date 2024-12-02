@@ -59,9 +59,9 @@ class Classification(BaseModel):
 def clasification():
     api_key = os.getenv("OPENAI_API_KEY")
     model = OpenAILanguageModel(api_key=api_key)
-    classifier = TextClassifier(api_key=api_key,llm=model, validation_class=Classification)
+    classifier = TextClassifier(llm=model, validation_class=Classification)
     result = classifier.classify("how are you?")
     print(result)
 
-bot_bdi()
-#clasification()
+#bot_bdi()
+clasification()
