@@ -7,7 +7,8 @@ class TextClassifier:
     def __init__(self, validation_class: Type[BaseModel], llm: ILanguageModel):
         self.llm =llm
         self.validation_class = validation_class
-        self.llm.set_clasificator(validation_class=validation_class)
+        #configuramos el modelo para que tenga una estructura de salida
+        self.llm.model =  self.llm.model.with_structured_output(validation_class)
 
     def classify(self, text: str) -> Dict[str, Any]:
         # Crear el template del prompt

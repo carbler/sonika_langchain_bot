@@ -59,6 +59,19 @@ bot = LangChainBot(language_model, embeddings, beliefs=beliefs, tools=tools)
 
 # Obtener respuesta
 response = bot.get_response("Hola como te llamas?")
+
+bot = LangChainBot(language_model, embeddings, beliefs=beliefs, tools=tools)
+
+user_message = 'Hola como me llamo?'
+
+#Cargas la conversacion previa con el bot
+bot.load_conversation_history([Message(content="Mi nombre es Erley", is_bot=False)])
+# Obtener la respuesta del bot
+response_model: ResponseModel = bot.get_response(user_message)
+bot_response = response_model
+
+print(bot_response)
+
 ```
 
 ### Ejemplo de Clasificación de Texto
@@ -81,8 +94,8 @@ class Classification(BaseModel):
     )
 
 # Inicializar clasificador
-model = OpenAIModel(api_key=api_key, validation_class=Classification)
-classifier = TextClassifier(api_key=api_key, llm=model, validation_class=Classification)
+model = OpenAILanguageModel(api_key=api_key)
+classifier = TextClassifier(llm=model, validation_class=Classification)
 
 # Clasificar texto
 result = classifier.classify("Tu texto aquí")

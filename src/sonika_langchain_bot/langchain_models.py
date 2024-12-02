@@ -22,15 +22,6 @@ class OpenAILanguageModel(ILanguageModel):
         """
         self.model = ChatOpenAI(temperature=temperature, model_name=model_name, api_key=api_key)
 
-    def set_clasificator(self, validation_class: Type[BaseModel]):
-        """
-        Configures the model to use a structured output format based on the provided validation class.
-
-        Args:
-            validation_class (Type[BaseModel]): A Pydantic model class that defines the structure for the model's output.
-        """
-        self.model =  self.model.with_structured_output(validation_class)
-
     def predict(self, prompt: str) -> str:
         """
         Genera una respuesta basada en el prompt proporcionado.
