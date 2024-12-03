@@ -77,7 +77,8 @@ print(bot_response)
 ### Ejemplo de Clasificación de Texto
 
 ```python
-from sonika_langchain_bot.langchain_clasificator import OpenAIModel, TextClassifier
+from sonika_langchain_bot.langchain_clasificator import TextClassifier
+from sonika_langchain_bot.langchain_models import OpenAILanguageModel
 from pydantic import BaseModel, Field
 
 # Definir estructura de clasificación

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="sonika-langchain-bot",
-    version="0.0.7", 
+    version="0.0.8", 
     description="Agente langchain con LLM",
     author="Erley Blanco Carvajal",
     license="MIT License",
