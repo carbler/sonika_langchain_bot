@@ -1,6 +1,7 @@
 # Sonika LangChain Bot
 
 Una librería Python que implementa un bot conversacional utilizando LangChain con capacidades BDI (Belief-Desire-Intention) y clasificación de texto.
+<a href="https://pepy.tech/projects/sonika-langchain-bot"><img src="https://static.pepy.tech/badge/sonika-langchain-bot" alt="PyPI Downloads"></a>
 
 ## Instalación
 
@@ -106,4 +107,3 @@ result = classifier.classify("Tu texto aquí")
 
 Las contribuciones son bienvenidas. Por favor, abre un issue para discutir los cambios importantes que te gustaría hacer.
 
-<a href="https://pepy.tech/projects/sonika-langchain-bot"><img src="https://static.pepy.tech/badge/sonika-langchain-bot" alt="PyPI Downloads"></a>
