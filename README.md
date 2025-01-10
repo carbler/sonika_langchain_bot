@@ -105,3 +105,5 @@ result = classifier.classify("Tu texto aquí")
 ## Contribución
 
 Las contribuciones son bienvenidas. Por favor, abre un issue para discutir los cambios importantes que te gustaría hacer.
+
+<a href="https://pepy.tech/projects/sonika-langchain-bot"><img src="https://static.pepy.tech/badge/sonika-langchain-bot" alt="PyPI Downloads"></a>
