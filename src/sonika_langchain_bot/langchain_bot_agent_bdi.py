@@ -1,3 +1,4 @@
+from typing import Generator
 from typing import List
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder, SystemMessagePromptTemplate, HumanMessagePromptTemplate
@@ -128,6 +129,26 @@ class LangChainBot:
         self.save_messages(user_input, bot_response)
 
         return ResponseModel(user_tokens=user_tokens, bot_tokens=bot_tokens, response=bot_response)
+    
+    def get_response_stream(self, user_input: str) -> Generator[str, None, None]:
+        """
+        Genera una respuesta en streaming para la entrada del usuario, procesando el contexto.
+
+        Args:
+            user_input (str): Entrada del usuario
+
+        Yields:
+            str: Fragmentos de la respuesta generada por el modelo en tiempo real
+        """
+        context = self._get_context(user_input)
+        augmented_input = f"User question: {user_input}"
+        if context:
+            augmented_input = f"Context from attached files:\n{context}\n\nUser question: {user_input}"
+
+        result_stream = self.conversation.stream({"input": augmented_input, "history": self.memory.chat_memory.messages})
+        for response in result_stream:
+            yield response.content
+
 
     def _get_context(self, query: str) -> str:
         """

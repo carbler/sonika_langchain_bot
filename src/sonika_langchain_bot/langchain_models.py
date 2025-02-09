@@ -1,8 +1,7 @@
 from langchain_openai import ChatOpenAI
 from sonika_langchain_bot.langchain_class import ILanguageModel
 from langchain_core.messages import HumanMessage
-from typing import  Type
-from pydantic import BaseModel
+from typing import Generator
 
 
 class OpenAILanguageModel(ILanguageModel):
@@ -47,3 +46,17 @@ class OpenAILanguageModel(ILanguageModel):
         message = HumanMessage(content=prompt)
         response = self.model.invoke([message])
         return response
+    
+    def stream_response(self, prompt: str) -> Generator[str, None, None]:
+        """
+        Genera una respuesta en streaming basada en el prompt proporcionado.
+
+        Args:
+            prompt (str): Texto de entrada para generar la respuesta
+        
+        Yields:
+            str: Fragmentos de la respuesta generada por el modelo en tiempo real
+        """
+        message = HumanMessage(content=prompt)
+        for chunk in self.model.stream([message]):
+            yield chunk.content

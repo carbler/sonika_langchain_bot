@@ -72,6 +72,10 @@ bot_response = response_model
 
 print(bot_response)
 
+#o por streaming
+for chunk in bot.get_response_stream(user_message):
+    print(chunk)
+
 ```
 
 ### Ejemplo de Clasificación de Texto
