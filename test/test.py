@@ -40,8 +40,29 @@ def bot_bdi():
 
     print(bot_response)
 
+def bot_bdi_streaming():
+    # Obtener claves de API desde el archivo .env
+    api_key = os.getenv("OPENAI_API_KEY")
+    api_key_tavily = os.getenv("TAVILY_API_KEY")
 
+    language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini-2024-07-18', temperature=1)
+    embeddings = OpenAIEmbeddings(api_key=api_key)
+    
+    # Configuración de herramientas y bots
+    search = TavilySearchResults(max_results=2, api_key=api_key_tavily)
+    email_tool = EmailTool()
+    
+    tools =[search, email_tool]
+    beliefs = [Belief(content="Eres un asistente de chat", type=BeliefType.PERSONALITY, confidence=1, source='personality')]
+    bot = LangChainBot(language_model, embeddings, beliefs=beliefs, tools=tools)
 
+    user_message = 'Hola como me llamo?'
+
+    bot.load_conversation_history([Message(content="Mi nombre es Erley", is_bot=False)])
+    for chunk in bot.get_response_stream(user_message):
+        print(chunk)
+
+    
 
 # Definir la clase 'Classification' con Pydantic para validar la estructura
 class Classification(BaseModel):
@@ -63,5 +84,6 @@ def clasification():
     result = classifier.classify("how are you?")
     print(result)
 
-#bot_bdi()
-clasification()
+bot_bdi()
+#bot_bdi_streaming()
+#clasification()
