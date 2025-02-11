@@ -46,6 +46,7 @@ class LangChainBot:
         """
         beliefs_context = self.belief_system.generate_prompt_context()
         full_system_prompt = f"{beliefs_context}\n\n"
+        print(full_system_prompt)
 
         prompt = ChatPromptTemplate.from_messages([
             SystemMessagePromptTemplate.from_template(full_system_prompt),
@@ -93,6 +94,8 @@ class LangChainBot:
         augmented_input = f"User question: {user_input}"
         if context:
             augmented_input = f"Context from attached files:\n{context}\n\nUser question: {user_input}"
+
+        print(augmented_input)
 
         bot_response = self.conversation.invoke({"input": augmented_input, "history": self.memory.chat_memory.messages})
 

@@ -28,8 +28,8 @@ def bot_bdi():
     email_tool = EmailTool()
     
     tools =[search, email_tool]
-    beliefs = [Belief(content="Eres un asistente de chat", type=BeliefType.PERSONALITY, confidence=1, source='personality')]
-    bot = LangChainBot(language_model, embeddings, beliefs=beliefs, tools=tools)
+    beliefs = [Belief(content="Eres la voz de mi conciencia", type=BeliefType.CORE, confidence=1, source='core')]
+    bot = LangChainBot(language_model, embeddings, beliefs=beliefs, tools=[])
 
     user_message = 'Hola como me llamo?'
 

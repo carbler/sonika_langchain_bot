@@ -64,16 +64,6 @@ class BotBeliefSystem:
     def _initialize_core_beliefs(self):
         """Initializes the core beliefs of the bot."""
         core_beliefs = [
-            Belief(
-                f"My name is {self.bot_name}.",
-                BeliefType.CORE,
-                confidence=1.0
-            ),
-            Belief(
-                f"I operate on Telegram, and my responses should be as concise and accurate as possible.",
-                BeliefType.CORE,
-                confidence=1.0
-            ),
             # Add more core beliefs as needed
         ]
         
@@ -81,6 +71,9 @@ class BotBeliefSystem:
             self.add_belief(belief)
 
     def add_tools_beliefs(self, tools: List[Tool]):
+
+        if len(tools) == 0:
+            return
         """Carga y procesa las herramientas disponibles para el bot."""
         # Instrucciones sobre el uso de herramientas en inglés
         instrucciones_de_uso = '''\nWhen you want to execute a tool, enclose the command with three asterisks and provide all parameters needed.
