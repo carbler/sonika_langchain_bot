@@ -1,14 +1,16 @@
 import os
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
+import sys
+# Añadir la carpeta 'src' al PYTHONPATH
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+
 
 from sonika_langchain_bot.langchain_tools import EmailTool
-from sonika_langchain_bot.langchain_bdi import Belief, BeliefType
-from sonika_langchain_bot.langchain_bot_agent_bdi import LangChainBot
+from sonika_langchain_bot.langchain_bot_agent import LangChainBot
 from sonika_langchain_bot.langchain_clasificator import  TextClassifier
 from sonika_langchain_bot.langchain_class import Message, ResponseModel
 from sonika_langchain_bot.langchain_models import OpenAILanguageModel
-from langchain_community.tools.tavily_search import TavilySearchResults
 from pydantic import BaseModel, Field
 
 
@@ -18,20 +20,14 @@ load_dotenv(env_path)
 def bot_bdi():
     # Obtener claves de API desde el archivo .env
     api_key = os.getenv("OPENAI_API_KEY")
-    api_key_tavily = os.getenv("TAVILY_API_KEY")
 
     language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini-2024-07-18', temperature=1)
     embeddings = OpenAIEmbeddings(api_key=api_key)
 
-    # Configuración de herramientas y bots
-    search = TavilySearchResults(max_results=2, api_key=api_key_tavily)
-    email_tool = EmailTool()
-    
-    tools =[search, email_tool]
-    beliefs = [Belief(content="Eres la voz de mi conciencia", type=BeliefType.CORE, confidence=1, source='core')]
-    bot = LangChainBot(language_model, embeddings, beliefs=beliefs, tools=[])
+    tools =[EmailTool()]
+    bot = LangChainBot(language_model, embeddings,  instructions="Eres un agente" , tools=tools)
 
-    user_message = 'Hola como me llamo?'
+    user_message = 'Envia un email con la tool a erley@gmail.com con el asunto Hola y el mensaje Hola Erley'
 
     bot.load_conversation_history([Message(content="Mi nombre es Erley", is_bot=False)])
     # Obtener la respuesta del bot
@@ -48,13 +44,9 @@ def bot_bdi_streaming():
     language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini-2024-07-18', temperature=1)
     embeddings = OpenAIEmbeddings(api_key=api_key)
     
-    # Configuración de herramientas y bots
-    search = TavilySearchResults(max_results=2, api_key=api_key_tavily)
-    email_tool = EmailTool()
-    
-    tools =[search, email_tool]
-    beliefs = [Belief(content="Eres un asistente de chat", type=BeliefType.PERSONALITY, confidence=1, source='personality')]
-    bot = LangChainBot(language_model, embeddings, beliefs=beliefs, tools=tools)
+    # Configuración de herramientas y bots    
+    tools =[]
+    bot = LangChainBot(language_model, embeddings, instructions="Only answers in english", tools=tools)
 
     user_message = 'Hola como me llamo?'
 

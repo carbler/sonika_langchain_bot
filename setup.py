@@ -11,23 +11,23 @@ setup(
     packages=find_packages(where="src"),  # Encuentra los paquetes dentro de "src"
     package_dir={"": "src"},  # Indica que los paquetes están en el directorio "src"
     install_requires=[
-        "langchain>=0.3.0,<1.0.0",  # Permite mayor flexibilidad
-        "langchain-community>=0.3.0,<1.0.0",
-        "langchain-core>=0.3.5,<1.0.0",
-        "langchain-openai>=0.2.0,<1.0.0",
-        "langgraph>=0.2.39,<1.0.0",
-        "langgraph-checkpoint>=2.0.2,<3.0.0",
-        "langgraph-sdk>=0.1.34,<2.0.0",
-        "dataclasses-json>=0.6.7,<1.0.0",
-        "python-dateutil>=2.9.0,<3.0.0",
-        "tiktoken>=0.7.0,<1.0.0",
-        "pydantic>=2.9.2,<3.0.0",
-        "faiss-cpu>=1.8.0,<2.0.0",
-        "pypdf>=5.0.0,<6.0.0",
-        "python-dotenv>=1.0.1,<2.0.0",
-        "typing_extensions>=4.12.0,<5.0.0",
-        "typing-inspect>=0.9.0,<1.0.0",
+        "langchain==0.3.26",
+        "langchain-community==0.3.26",
+        "langchain-core==0.3.66",
+        "langchain-openai==0.3.24",
+        "langgraph==0.4.8",
+        "langgraph-checkpoint==2.1.0",
+        "langgraph-sdk==0.1.70",
+        "dataclasses-json==0.6.7",
+        "python-dateutil==2.9.0.post0",
+        "pydantic==2.11.7",
+        "faiss-cpu==1.11.0",
+        "pypdf==5.6.1",
+        "python-dotenv==1.0.1",
+        "typing_extensions==4.14.0",
+        "typing-inspect==0.9.0",
     ],
+
     extras_require={
         "dev": [
             "sphinx>=8.1.3,<9.0.0",

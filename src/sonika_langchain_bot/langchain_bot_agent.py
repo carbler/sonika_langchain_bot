@@ -1,11 +1,8 @@
-from typing import Generator
-from typing import List
-from langchain.memory import ConversationBufferMemory
+from typing import Generator, List
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder, SystemMessagePromptTemplate, HumanMessagePromptTemplate
-from langchain.schema import AIMessage, HumanMessage
+from langchain.schema import AIMessage, HumanMessage, BaseMessage
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from sonika_langchain_bot.langchain_bdi import Belief, BotBeliefSystem
 from sonika_langchain_bot.langchain_class import FileProcessorInterface, IEmbeddings, ILanguageModel, Message, ResponseModel
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
@@ -18,35 +15,72 @@ class LangChainBot:
     memoria de conversación y uso de herramientas personalizadas.
     """
 
-    def __init__(self, language_model: ILanguageModel, embeddings: IEmbeddings, beliefs: List[Belief], tools: List[BaseTool]):
+    def __init__(self, language_model: ILanguageModel, embeddings: IEmbeddings, instructions: str, tools: List[BaseTool]):
         """
         Inicializa el bot con el modelo de lenguaje, embeddings y herramientas necesarias.
 
         Args:
             language_model (ILanguageModel): Modelo de lenguaje a utilizar
             embeddings (IEmbeddings): Modelo de embeddings para procesamiento de texto
-            beliefs (List[Belief]): Lista de creencias iniciales
+            instructions (str): Instrucciones del sistema
             tools (List[BaseTool]): Lista de herramientas disponibles
         """
         self.language_model = language_model
         self.embeddings = embeddings
-        self.memory = ConversationBufferMemory(return_messages=True)
+        # Reemplazamos ConversationBufferMemory con una lista simple de mensajes
+        self.chat_history: List[BaseMessage] = []
         self.memory_agent = MemorySaver()
         self.vector_store = None
         self.tools = tools
-        self.beliefs = beliefs
-        self.belief_system = BotBeliefSystem('Hal9000', '1.0.0', beliefs_init=beliefs, tools=tools)
+        self.instructions = instructions
+        self.add_tools_to_instructions(tools)
         self.conversation = self._create_conversation_chain()
         self.agent_executor = self._create_agent_executor()
+
+    def add_tools_to_instructions(self, tools: List[BaseTool]):
+        """Agrega información de las herramientas a las instrucciones base del sistema."""
+        if len(tools) == 0:
+            return
+            
+        # Instrucciones sobre el uso de herramientas
+        tools_instructions = '''\n\nWhen you want to execute a tool, enclose the command with three asterisks and provide all parameters needed.
+Ensure you gather all relevant information from the conversation to use the parameters.
+If information is missing, search online.
+
+This is a list of the tools you can execute:
+'''
+        
+        # Procesar cada herramienta y agregarla a las instrucciones
+        for tool in tools:
+            tool_name = tool.name
+            tool_description = tool.description
+            
+            tools_instructions += f"\nTool Name: {tool_name}\n"
+            tools_instructions += f"Description: {tool_description}\n"
+            
+            # Intentar obtener información de parámetros
+            run_method = getattr(tool, '_run', None)
+            if run_method:
+                try:
+                    import inspect
+                    params = inspect.signature(run_method)
+                    tools_instructions += f"Parameters: {params}\n"
+                except:
+                    tools_instructions += "Parameters: Not available\n"
+            else:
+                tools_instructions += "Parameters: Not available\n"
+            
+            tools_instructions += "---\n"
+        
+        # Agregar las instrucciones de herramientas a las instrucciones base
+        self.instructions += tools_instructions
+        
 
     def _create_conversation_chain(self):
         """
         Crea la cadena de conversación con el prompt template y la memoria.
-        Ahora incluye el contexto del sistema de creencias.
         """
-        beliefs_context = self.belief_system.generate_prompt_context()
-        full_system_prompt = f"{beliefs_context}\n\n"
-        print(full_system_prompt)
+        full_system_prompt = f"{self.instructions}\n\n"
 
         prompt = ChatPromptTemplate.from_messages([
             SystemMessagePromptTemplate.from_template(full_system_prompt),
@@ -95,14 +129,16 @@ class LangChainBot:
         if context:
             augmented_input = f"Context from attached files:\n{context}\n\nUser question: {user_input}"
 
-        print(augmented_input)
+        # Usamos el historial de chat directamente
+        bot_response = self.conversation.invoke({
+            "input": augmented_input, 
+            "history": self.chat_history
+        })
 
-        bot_response = self.conversation.invoke({"input": augmented_input, "history": self.memory.chat_memory.messages})
-
-        token_usage= bot_response.response_metadata['token_usage']
-        bot_response = bot_response.content
+        token_usage = bot_response.response_metadata.get('token_usage', {})
+        bot_response_content = bot_response.content
         
-        instruction_tool = self._getInstruccionTool(bot_response)
+        instruction_tool = self._getInstruccionTool(bot_response_content)
 
         if instruction_tool:
             messages = [HumanMessage(content=instruction_tool)]
@@ -124,14 +160,14 @@ class LangChainBot:
                     for message in response['agent']['messages']:
                         agent_response = message.content
 
-            bot_response = agent_response if agent_response else tool_response
+            bot_response_content = agent_response if agent_response else tool_response
 
-        user_tokens = token_usage['prompt_tokens']
-        bot_tokens = token_usage['completion_tokens']
+        user_tokens = token_usage.get('prompt_tokens', 0)
+        bot_tokens = token_usage.get('completion_tokens', 0)
 
-        self.save_messages(user_input, bot_response)
+        self.save_messages(user_input, bot_response_content)
 
-        return ResponseModel(user_tokens=user_tokens, bot_tokens=bot_tokens, response=bot_response)
+        return ResponseModel(user_tokens=user_tokens, bot_tokens=bot_tokens, response=bot_response_content)
     
     def get_response_stream(self, user_input: str) -> Generator[str, None, None]:
         """
@@ -148,10 +184,20 @@ class LangChainBot:
         if context:
             augmented_input = f"Context from attached files:\n{context}\n\nUser question: {user_input}"
 
-        result_stream = self.conversation.stream({"input": augmented_input, "history": self.memory.chat_memory.messages})
+        # Usamos el historial de chat directamente
+        result_stream = self.conversation.stream({
+            "input": augmented_input, 
+            "history": self.chat_history
+        })
+        
+        full_response = ""
         for response in result_stream:
-            yield response.content
-
+            content = response.content
+            full_response += content
+            yield content
+        
+        # Guardamos los mensajes después del streaming
+        self.save_messages(user_input, full_response)
 
     def _get_context(self, query: str) -> str:
         """
@@ -172,7 +218,7 @@ class LangChainBot:
         """
         Limpia la memoria de conversación y el almacén de vectores.
         """
-        self.memory.clear()
+        self.chat_history.clear()
         self.vector_store = None
 
     def load_conversation_history(self, messages: List[Message]):
@@ -182,22 +228,23 @@ class LangChainBot:
         Args:
             messages: Lista de objetos Message que representan cada mensaje.
         """
+        self.chat_history.clear()
         for message in messages:
             if message.is_bot:
-                self.memory.chat_memory.add_message(AIMessage(content=message.content))
+                self.chat_history.append(AIMessage(content=message.content))
             else:
-                self.memory.chat_memory.add_message(HumanMessage(content=message.content))
+                self.chat_history.append(HumanMessage(content=message.content))
 
     def save_messages(self, user_message: str, bot_response: str):
         """
-        Guarda los mensajes en la memoria de conversación.
+        Guarda los mensajes en el historial de conversación.
 
         Args:
             user_message (str): Mensaje del usuario
             bot_response (str): Respuesta del bot
         """
-        self.memory.chat_memory.add_message(HumanMessage(content=user_message))
-        self.memory.chat_memory.add_message(AIMessage(content=bot_response))
+        self.chat_history.append(HumanMessage(content=user_message))
+        self.chat_history.append(AIMessage(content=bot_response))
 
     def process_file(self, file: FileProcessorInterface):
         """
@@ -214,3 +261,21 @@ class LangChainBot:
             self.vector_store = FAISS.from_texts([doc.page_content for doc in texts], self.embeddings)
         else:
             self.vector_store.add_texts([doc.page_content for doc in texts])
+
+    def get_chat_history(self) -> List[BaseMessage]:
+        """
+        Obtiene el historial completo de la conversación.
+
+        Returns:
+            List[BaseMessage]: Lista de mensajes de la conversación
+        """
+        return self.chat_history.copy()
+
+    def set_chat_history(self, history: List[BaseMessage]):
+        """
+        Establece el historial de conversación.
+
+        Args:
+            history (List[BaseMessage]): Lista de mensajes a establecer
+        """
+        self.chat_history = history.copy()

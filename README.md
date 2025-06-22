@@ -1,113 +1,174 @@
 # Sonika LangChain Bot <a href="https://pepy.tech/projects/sonika-langchain-bot"><img src="https://static.pepy.tech/badge/sonika-langchain-bot" alt="PyPI Downloads"></a>
 
+A Python library that implements a conversational agent using LangChain with tool execution capabilities and text classification.
 
-Una librería Python que implementa un bot conversacional utilizando LangChain con capacidades BDI (Belief-Desire-Intention) y clasificación de texto.
-
-## Instalación
+## Installation
 
 ```bash
 pip install sonika-langchain-bot
 ```
 
-## Requisitos previos
+## Prerequisites
 
-Necesitarás las siguientes API keys:
+You'll need the following API keys:
 
 - OpenAI API Key
 
-Crea un archivo `.env` en la raíz de tu proyecto con las siguientes variables:
+Create a `.env` file in the root of your project with the following variables:
 
 ```env
-OPENAI_API_KEY=tu_api_key_aqui
+OPENAI_API_KEY=your_api_key_here
 ```
 
-## Características principales
+## Key Features
 
-- Bot conversacional con arquitectura BDI
-- Clasificación de texto
-- Ejecución de código personalizado por medio de tools
+- Conversational agent with tool execution capabilities
+- Text classification with structured output
+- Custom tool integration
+- Streaming responses
+- Conversation history management
+- Flexible instruction-based behavior
 
-## Uso básico
+## Basic Usage
 
-### Ejemplo de Bot BDI
+### Agent with Tools Example
 
 ```python
-from sonika_langchain_bot.langchain_bdi import Belief, BeliefType
-from sonika_langchain_bot.langchain_bot_agent_bdi import LangChainBot
-from sonika_langchain_bot.langchain_models import OpenAILanguageModel
+import os
+from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
+from sonika_langchain_bot.langchain_tools import EmailTool
+from sonika_langchain_bot.langchain_bot_agent import LangChainBot
+from sonika_langchain_bot.langchain_class import Message, ResponseModel
+from sonika_langchain_bot.langchain_models import OpenAILanguageModel
 
-# Inicializar el modelo de lenguaje
-language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini', temperature=1)
+# Load environment variables
+load_dotenv()
+
+# Get API key from .env file
+api_key = os.getenv("OPENAI_API_KEY")
+
+# Initialize language model and embeddings
+language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini-2024-07-18', temperature=1)
 embeddings = OpenAIEmbeddings(api_key=api_key)
 
-# Configurar herramientas propias o de terceros
-search = TavilySearchResults(max_results=2, api_key=api_key_tavily)
-tools = [search]
+# Configure tools
+tools = [EmailTool()]
 
-# Configurar creencias
-beliefs = [
-    Belief(
-        content="Eres un asistente de chat",
-        type=BeliefType.PERSONALITY,
-        confidence=1,
-        source='personality'
-    )
-]
+# Create agent instance
+bot = LangChainBot(language_model, embeddings, instructions="You are an agent", tools=tools)
 
-# Crear instancia del bot
-bot = LangChainBot(language_model, embeddings, beliefs=beliefs, tools=tools)
+# Load conversation history
+bot.load_conversation_history([Message(content="My name is Erley", is_bot=False)])
 
-# Obtener respuesta
-response = bot.get_response("Hola como te llamas?")
-
-bot = LangChainBot(language_model, embeddings, beliefs=beliefs, tools=tools)
-
-user_message = 'Hola como me llamo?'
-
-#Cargas la conversacion previa con el bot
-bot.load_conversation_history([Message(content="Mi nombre es Erley", is_bot=False)])
-# Obtener la respuesta del bot
+# Get response
+user_message = 'Send an email with the tool to erley@gmail.com with subject Hello and message Hello Erley'
 response_model: ResponseModel = bot.get_response(user_message)
-bot_response = response_model
 
-print(bot_response)
-
-#o por streaming
-for chunk in bot.get_response_stream(user_message):
-    print(chunk)
-
+print(response_model)
 ```
 
-### Ejemplo de Clasificación de Texto
+### Streaming Response Example
 
 ```python
+import os
+from dotenv import load_dotenv
+from langchain_openai import OpenAIEmbeddings
+from sonika_langchain_bot.langchain_bot_agent import LangChainBot
+from sonika_langchain_bot.langchain_class import Message
+from sonika_langchain_bot.langchain_models import OpenAILanguageModel
+
+# Load environment variables
+load_dotenv()
+
+# Get API key from .env file
+api_key = os.getenv("OPENAI_API_KEY")
+
+# Initialize language model and embeddings
+language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini-2024-07-18', temperature=1)
+embeddings = OpenAIEmbeddings(api_key=api_key)
+
+# Create agent instance
+bot = LangChainBot(language_model, embeddings, instructions="Only answers in english", tools=[])
+
+# Load conversation history
+bot.load_conversation_history([Message(content="My name is Erley", is_bot=False)])
+
+# Get streaming response
+user_message = 'Hello, what is my name?'
+for chunk in bot.get_response_stream(user_message):
+    print(chunk)
+```
+
+### Text Classification Example
+
+```python
+import os
+from dotenv import load_dotenv
 from sonika_langchain_bot.langchain_clasificator import TextClassifier
 from sonika_langchain_bot.langchain_models import OpenAILanguageModel
 from pydantic import BaseModel, Field
 
-# Definir estructura de clasificación
+# Load environment variables
+load_dotenv()
+
+# Define classification structure with Pydantic
 class Classification(BaseModel):
     intention: str = Field()
-    sentiment: str = Field(..., enum=["feliz", "neutral", "triste", "excitado"])
+    sentiment: str = Field(..., enum=["happy", "neutral", "sad", "excited"])
     aggressiveness: int = Field(
         ...,
-        description="describes how aggressive the statement is",
+        description="describes how aggressive the statement is, the higher the number the more aggressive",
         enum=[1, 2, 3, 4, 5],
     )
     language: str = Field(
-        ..., enum=["español", "ingles", "frances", "aleman", "italiano"]
+        ..., enum=["spanish", "english", "french", "german", "italian"]
     )
 
-# Inicializar clasificador
+# Initialize classifier
+api_key = os.getenv("OPENAI_API_KEY")
 model = OpenAILanguageModel(api_key=api_key)
 classifier = TextClassifier(llm=model, validation_class=Classification)
 
-# Clasificar texto
-result = classifier.classify("Tu texto aquí")
+# Classify text
+result = classifier.classify("how are you?")
+print(result)
 ```
 
-## Contribución
+## Available Classes and Components
 
-Las contribuciones son bienvenidas. Por favor, abre un issue para discutir los cambios importantes que te gustaría hacer.
+### Core Classes
 
+- **LangChainBot**: Main conversational agent for task execution with tools
+- **OpenAILanguageModel**: Wrapper for OpenAI language models
+- **TextClassifier**: Text classification using structured output
+- **Message**: Message structure for conversation history
+- **ResponseModel**: Response structure from agent interactions
+
+### Tools
+
+- **EmailTool**: Tool for sending emails through the agent
+
+## Project Structure
+
+```
+your_project/
+├── .env                    # Environment variables
+├── src/
+│   └── sonika_langchain_bot/
+│       ├── langchain_bot_agent.py
+│       ├── langchain_clasificator.py
+│       ├── langchain_class.py
+│       ├── langchain_models.py
+│       └── langchain_tools.py
+└── tests/
+    └── test_bot.py
+```
+
+## Contributing
+
+Contributions are welcome. Please open an issue to discuss major changes you'd like to make.
+
+## License
+
+This project is licensed under the MIT License.
