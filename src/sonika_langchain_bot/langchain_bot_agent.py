@@ -142,28 +142,44 @@ class LangChainBot:
         return self.language_model.model
 
     def _build_modern_instructions(self) -> str:
-        """
-        Build modern system instructions with automatic tool descriptions.
-        
-        This method enhances the base instructions with professional tool descriptions
-        that leverage native function calling capabilities, eliminating the need for
-        manual tool instruction formatting.
-        
-        Returns:
-            str: Complete system instructions including tool descriptions
-        """
         instructions = self.base_instructions
         
         if self.tools:
-            tools_description = "\n\nYou have access to the following tools:\n"
-            for tool in self.tools:
-                tools_description += f"- {tool.name}: {tool.description}\n"
+            tools_description = "\n\n# Available Tools\n\n"
             
-            tools_description += ("\nCall these tools when needed using the standard function calling format. "
-                                "You can call multiple tools in sequence if necessary to fully answer the user's question.")
+            for tool in self.tools:
+                tools_description += f"## {tool.name}\n"
+                tools_description += f"**Description:** {tool.description}\n\n"
+                
+                # Opción 1: Tool con args_schema explícito (tu HTTPTool)
+                if hasattr(tool, 'args_schema') and tool.args_schema:
+                    if hasattr(tool.args_schema, '__fields__'):
+                        tools_description += f"**Parameters:**\n"
+                        for field_name, field_info in tool.args_schema.__fields__.items():
+                            required = "**REQUIRED**" if field_info.is_required() else "*optional*"
+                            tools_description += f"- `{field_name}` ({field_info.annotation.__name__}, {required}): {field_info.description}\n"
+                
+                # Opción 2: Tool básico sin args_schema (EmailTool)
+                elif hasattr(tool, '_run'):
+                    tools_description += f"**Parameters:**\n"
+                    import inspect
+                    sig = inspect.signature(tool._run)
+                    for param_name, param in sig.parameters.items():
+                        if param_name != 'self':
+                            param_type = param.annotation.__name__ if param.annotation != inspect.Parameter.empty else 'any'
+                            required = "*optional*" if param.default != inspect.Parameter.empty else "**REQUIRED**"
+                            default_info = f" (default: {param.default})" if param.default != inspect.Parameter.empty else ""
+                            tools_description += f"- `{param_name}` ({param_type}, {required}){default_info}\n"
+                
+                tools_description += "\n"
+            
+            tools_description += ("## Usage Instructions\n"
+                                "- Use the standard function calling format\n"
+                                "- **MUST** provide all REQUIRED parameters\n"
+                                "- Do NOT call tools with empty arguments\n")
             
             instructions += tools_description
-        
+
         return instructions
 
     def _create_modern_workflow(self) -> StateGraph:
@@ -543,180 +559,3 @@ class LangChainBot:
             docs = self.vector_store.similarity_search(query, k=4)
             return "\n".join([doc.page_content for doc in docs])
         return ""
-
-    # ===== MODERN ENHANCED CAPABILITIES =====
-    
-    def get_response_with_thread(self, user_input: str, thread_id: str) -> ResponseModel:
-        """
-        Generate response with automatic conversation persistence using thread IDs.
-        
-        This method leverages LangGraph's checkpointing system to automatically
-        persist and retrieve conversation state based on thread identifiers.
-        
-        Args:
-            user_input (str): The user's message or query
-            thread_id (str): Unique identifier for the conversation thread
-            
-        Returns:
-            ResponseModel: Structured response with token usage and content
-            
-        Raises:
-            ValueError: If checkpointer is not configured during initialization
-            
-        Note:
-            Each thread_id maintains independent conversation state, enabling
-            multiple concurrent conversations per user or session.
-        """
-        if not self.checkpointer:
-            raise ValueError("Checkpointer not configured. Initialize with use_checkpointer=True")
-        
-        config = {"configurable": {"thread_id": thread_id}}
-        
-        initial_state = {
-            "messages": [HumanMessage(content=user_input)],
-            "context": ""
-        }
-        
-        result = self.graph.invoke(initial_state, config=config)
-        
-        # Extract final response
-        final_response = ""
-        for msg in reversed(result["messages"]):
-            if isinstance(msg, AIMessage) and msg.content:
-                final_response = msg.content
-                break
-        
-        # Extract token usage
-        token_usage = {}
-        last_message = result["messages"][-1]
-        if hasattr(last_message, 'response_metadata'):
-            token_usage = last_message.response_metadata.get('token_usage', {})
-        
-        return ResponseModel(
-            user_tokens=token_usage.get('prompt_tokens', 0),
-            bot_tokens=token_usage.get('completion_tokens', 0),
-            response=final_response
-        )
-
-    def stream_with_thread(self, user_input: str, thread_id: str) -> Generator[Dict[str, Any], None, None]:
-        """
-        Stream response with automatic conversation persistence.
-        
-        This method combines streaming capabilities with thread-based persistence,
-        allowing real-time response generation while maintaining conversation state.
-        
-        Args:
-            user_input (str): The user's message or query
-            thread_id (str): Unique identifier for the conversation thread
-            
-        Yields:
-            Dict[str, Any]: Workflow execution chunks containing intermediate states
-            
-        Raises:
-            ValueError: If checkpointer is not configured during initialization
-        """
-        if not self.checkpointer:
-            raise ValueError("Checkpointer not configured. Initialize with use_checkpointer=True")
-        
-        config = {"configurable": {"thread_id": thread_id}}
-        
-        initial_state = {
-            "messages": [HumanMessage(content=user_input)],
-            "context": ""
-        }
-        
-        for chunk in self.graph.stream(initial_state, config=config):
-            yield chunk
-
-    def get_mcp_status(self) -> Dict[str, Any]:
-        """
-        Retrieve the current status of MCP (Model Context Protocol) integration.
-        
-        This method provides diagnostic information about MCP server connections
-        and tool availability for monitoring and debugging purposes.
-        
-        Returns:
-            Dict[str, Any]: MCP status information containing:
-                - mcp_enabled: Whether MCP is active
-                - servers: List of connected server names
-                - tools_count: Number of MCP-sourced tools
-                - total_tools: Total number of available tools
-        """
-        if not self.mcp_client:
-            return {"mcp_enabled": False, "servers": [], "tools_count": 0}
-        
-        mcp_tools_count = len([
-            tool for tool in self.tools 
-            if hasattr(tool, '__module__') and tool.__module__ and 'mcp' in tool.__module__
-        ])
-        
-        return {
-            "mcp_enabled": True,
-            "servers": list(getattr(self.mcp_client, '_servers', {}).keys()),
-            "tools_count": mcp_tools_count,
-            "total_tools": len(self.tools)
-        }
-
-    def add_tool_dynamically(self, tool: BaseTool):
-        """
-        Add a tool to the bot's capabilities at runtime.
-        
-        This method allows dynamic tool addition after initialization, automatically
-        updating the model binding and workflow configuration.
-        
-        Args:
-            tool (BaseTool): The LangChain tool to add to the bot's capabilities
-            
-        Note:
-            Adding tools dynamically triggers a complete workflow reconstruction
-            to ensure proper tool integration and binding.
-        """
-        self.tools.append(tool)
-        # Reconstruct model binding and workflow with new tool
-        self.model_with_tools = self._prepare_model_with_tools()
-        self.instructions = self._build_modern_instructions()
-        self.graph = self._create_modern_workflow()
-
-    # ===== UTILITY AND DIAGNOSTIC METHODS =====
-
-    def get_workflow_state(self) -> Dict[str, Any]:
-        """
-        Get current workflow configuration for debugging and monitoring.
-        
-        Returns:
-            Dict[str, Any]: Workflow state information including:
-                - tools_count: Number of available tools
-                - has_checkpointer: Whether persistence is enabled
-                - has_vector_store: Whether file processing is active
-                - chat_history_length: Current conversation length
-        """
-        return {
-            "tools_count": len(self.tools),
-            "has_checkpointer": self.checkpointer is not None,
-            "has_vector_store": self.vector_store is not None,
-            "chat_history_length": len(self.chat_history),
-            "mcp_enabled": self.mcp_client is not None
-        }
-
-    def reset_conversation(self):
-        """
-        Reset conversation state while preserving configuration and processed files.
-        
-        This method clears only the conversation history while maintaining
-        tool configurations, file context, and other persistent settings.
-        """
-        self.chat_history.clear()
-
-    def get_tool_names(self) -> List[str]:
-        """
-        Get list of available tool names for diagnostic purposes.
-        
-        Returns:
-            List[str]: Names of all currently available tools
-        """
-        return [tool.name for tool in self.tools]
-
-    # ===== FIN DE LA CLASE =====
-    # No hay métodos legacy innecesarios
-
-
