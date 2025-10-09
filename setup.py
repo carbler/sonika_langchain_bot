@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="sonika-langchain-bot",
-    version="0.0.13", 
+    version="0.0.15", 
     description="Agente langchain con LLM",
     author="Erley Blanco Carvajal",
     license="MIT License",
@@ -26,6 +26,10 @@ setup(
         "python-dotenv==1.0.1",
         "typing_extensions==4.14.0",
         "typing-inspect==0.9.0",
+        "PyPDF2==3.0.1",
+        "python-docx==1.2.0",
+        "openpyxl==3.1.5",
+        "python-pptx==1.0.2"
     ],
 
     extras_require={

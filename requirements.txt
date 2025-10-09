@@ -13,3 +13,7 @@ pypdf==5.6.1
 python-dotenv==1.0.1
 typing_extensions==4.14.0
 typing-inspect==0.9.0
+PyPDF2==3.0.1
+python-docx==1.2.0
+openpyxl==3.1.5
+python-pptx==1.0.2

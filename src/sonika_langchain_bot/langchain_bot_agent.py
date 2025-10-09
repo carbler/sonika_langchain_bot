@@ -9,7 +9,6 @@ from langgraph.graph import StateGraph, END, add_messages
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_mcp_adapters.client import MultiServerMCPClient
-
 # Import your existing interfaces
 from sonika_langchain_bot.langchain_class import FileProcessorInterface, IEmbeddings, ILanguageModel, Message, ResponseModel
 
@@ -151,15 +150,24 @@ class LangChainBot:
                 tools_description += f"## {tool.name}\n"
                 tools_description += f"**Description:** {tool.description}\n\n"
                 
-                # Opción 1: Tool con args_schema explícito (tu HTTPTool)
-                if hasattr(tool, 'args_schema') and tool.args_schema:
-                    if hasattr(tool.args_schema, '__fields__'):
-                        tools_description += f"**Parameters:**\n"
-                        for field_name, field_info in tool.args_schema.__fields__.items():
-                            required = "**REQUIRED**" if field_info.is_required() else "*optional*"
-                            tools_description += f"- `{field_name}` ({field_info.annotation.__name__}, {required}): {field_info.description}\n"
+                # Opción 1: args_schema es una clase Pydantic (HTTPTool)
+                if hasattr(tool, 'args_schema') and tool.args_schema and hasattr(tool.args_schema, '__fields__'):
+                    tools_description += f"**Parameters:**\n"
+                    for field_name, field_info in tool.args_schema.__fields__.items():
+                        required = "**REQUIRED**" if field_info.is_required() else "*optional*"
+                        tools_description += f"- `{field_name}` ({field_info.annotation.__name__}, {required}): {field_info.description}\n"
                 
-                # Opción 2: Tool básico sin args_schema (EmailTool)
+                # Opción 2: args_schema es un dict (MCP Tools) ← NUEVO
+                elif hasattr(tool, 'args_schema') and isinstance(tool.args_schema, dict):
+                    if 'properties' in tool.args_schema:
+                        tools_description += f"**Parameters:**\n"
+                        for param_name, param_info in tool.args_schema['properties'].items():
+                            required = "**REQUIRED**" if param_name in tool.args_schema.get('required', []) else "*optional*"
+                            param_desc = param_info.get('description', 'No description')
+                            param_type = param_info.get('type', 'any')
+                            tools_description += f"- `{param_name}` ({param_type}, {required}): {param_desc}\n"
+                
+                # Opción 3: Tool básico con _run (fallback)
                 elif hasattr(tool, '_run'):
                     tools_description += f"**Parameters:**\n"
                     import inspect
@@ -170,7 +178,7 @@ class LangChainBot:
                             required = "*optional*" if param.default != inspect.Parameter.empty else "**REQUIRED**"
                             default_info = f" (default: {param.default})" if param.default != inspect.Parameter.empty else ""
                             tools_description += f"- `{param_name}` ({param_type}, {required}){default_info}\n"
-                
+                            
                 tools_description += "\n"
             
             tools_description += ("## Usage Instructions\n"
@@ -179,7 +187,7 @@ class LangChainBot:
                                 "- Do NOT call tools with empty arguments\n")
             
             instructions += tools_description
-
+        
         return instructions
 
     def _create_modern_workflow(self) -> StateGraph:
@@ -354,7 +362,10 @@ class LangChainBot:
         }
         
         # Execute the LangGraph workflow
-        result = self.graph.invoke(initial_state)
+        #result = self.graph.invoke(initial_state)
+
+         # Siempre usar ainvoke (funciona para ambos casos)
+        result = asyncio.run(self.graph.ainvoke(initial_state))
         
         # Update internal conversation history
         self.chat_history = result["messages"]
