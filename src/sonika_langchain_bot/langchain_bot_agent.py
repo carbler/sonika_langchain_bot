@@ -163,10 +163,35 @@ class LangChainBot:
             self.mcp_client = MultiServerMCPClient(mcp_servers)
             self.logger.info("✅ MultiServerMCPClient creado")
             
-            self.logger.info("🔄 Obteniendo herramientas desde servidores MCP...")
-            mcp_tools = asyncio.run(self.mcp_client.get_tools())
+            # ===== FIX PARA APACHE/MOD_WSGI =====
+            self.logger.info("🔧 Aplicando fix para compatibilidad Apache/mod_wsgi...")
             
-            self.logger.info(f"📥 Herramientas MCP recibidas: {len(mcp_tools)}")
+            import subprocess
+            original_create = asyncio.create_subprocess_exec
+            
+            async def fixed_create(*args, stdin=None, stdout=None, stderr=None, **kwargs):
+                """Forzar PIPE para evitar heredar sys.stderr de Apache"""
+                return await original_create(
+                    *args,
+                    stdin=stdin or subprocess.PIPE,
+                    stdout=stdout or subprocess.PIPE,
+                    stderr=stderr or subprocess.PIPE,
+                    **kwargs
+                )
+            
+            # Aplicar parche temporalmente
+            asyncio.create_subprocess_exec = fixed_create
+            self.logger.debug("✅ Parche temporal aplicado a asyncio.create_subprocess_exec")
+            
+            try:
+                self.logger.info("🔄 Obteniendo herramientas desde servidores MCP...")
+                mcp_tools = asyncio.run(self.mcp_client.get_tools())
+                self.logger.info(f"📥 Herramientas MCP recibidas: {len(mcp_tools)}")
+            finally:
+                # Restaurar original
+                asyncio.create_subprocess_exec = original_create
+                self.logger.debug("✅ Parche temporal removido, asyncio restaurado")
+            # =====================================
             
             if mcp_tools:
                 for i, tool in enumerate(mcp_tools, 1):
