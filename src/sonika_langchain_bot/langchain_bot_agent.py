@@ -1,5 +1,6 @@
 from typing import Generator, List, Optional, Dict, Any, TypedDict, Annotated
 import asyncio
+import logging
 from langchain.schema import AIMessage, HumanMessage, BaseMessage
 from langchain_core.messages import ToolMessage
 from langchain.text_splitter import CharacterTextSplitter
@@ -39,6 +40,7 @@ class LangChainBot:
         - Thread-based conversation persistence
         - Streaming responses
         - Backward compatibility with legacy APIs
+        - Debug logging injection for production troubleshooting
     """
 
     def __init__(self, 
@@ -47,7 +49,8 @@ class LangChainBot:
                  instructions: str, 
                  tools: Optional[List[BaseTool]] = None,
                  mcp_servers: Optional[Dict[str, Any]] = None,
-                 use_checkpointer: bool = False):
+                 use_checkpointer: bool = False,
+                 logger: Optional[logging.Logger] = None):
         """
         Initialize the modern LangGraph bot with optional MCP support.
 
@@ -58,15 +61,27 @@ class LangChainBot:
             tools (List[BaseTool], optional): Traditional LangChain tools to bind to the model
             mcp_servers (Dict[str, Any], optional): MCP server configurations for dynamic tool loading
             use_checkpointer (bool): Enable automatic conversation persistence using LangGraph checkpoints
+            logger (logging.Logger, optional): Logger instance for debugging. If None, uses silent NullHandler
         
         Note:
             The instructions will be automatically enhanced with tool descriptions
             when tools are provided, eliminating the need for manual tool instruction formatting.
         """
+        # Configure logger (silent by default if not provided)
+        self.logger = logger or logging.getLogger(__name__)
+        if logger is None:
+            self.logger.addHandler(logging.NullHandler())
+        
+        self.logger.info("="*80)
+        self.logger.info("🚀 Inicializando LangChainBot")
+        self.logger.info("="*80)
+        
         # Core components
         self.language_model = language_model
         self.embeddings = embeddings
         self.base_instructions = instructions
+        
+        self.logger.debug(f"📋 Instrucciones base: {len(instructions)} caracteres")
         
         # Backward compatibility attributes
         self.chat_history: List[BaseMessage] = []
@@ -76,25 +91,39 @@ class LangChainBot:
         self.tools = tools or []
         self.mcp_client = None
         
+        self.logger.info(f"🔧 Herramientas iniciales: {len(self.tools)}")
+        
         # Initialize MCP servers if provided
         if mcp_servers:
+            self.logger.info(f"🌐 Servidores MCP detectados: {len(mcp_servers)}")
             self._initialize_mcp(mcp_servers)
+        else:
+            self.logger.debug("⚪ Sin servidores MCP configurados")
         
         # Configure persistence layer
         self.checkpointer = MemorySaver() if use_checkpointer else None
+        self.logger.debug(f"💾 Checkpointer: {'Habilitado' if use_checkpointer else 'Deshabilitado'}")
         
         # Prepare model with bound tools for native function calling
+        self.logger.info("🤖 Preparando modelo con herramientas...")
         self.model_with_tools = self._prepare_model_with_tools()
         
         # Build modern instruction set with tool descriptions
+        self.logger.info("📝 Construyendo instrucciones modernas...")
         self.instructions = self._build_modern_instructions()
+        self.logger.debug(f"📋 Instrucciones finales: {len(self.instructions)} caracteres")
         
         # Create the LangGraph workflow
+        self.logger.info("🔄 Creando workflow de LangGraph...")
         self.graph = self._create_modern_workflow()
         
         # Legacy compatibility attributes (maintained for API compatibility)
         self.conversation = None
         self.agent_executor = None
+        
+        self.logger.info("✅ LangChainBot inicializado correctamente")
+        self.logger.info(f"📊 Resumen: {len(self.tools)} herramientas, {len(self.chat_history)} mensajes en historial")
+        self.logger.info("="*80 + "\n")
 
     def _initialize_mcp(self, mcp_servers: Dict[str, Any]):
         """
@@ -117,14 +146,56 @@ class LangChainBot:
             MCP tools are automatically appended to the existing tools list and
             will be included in the model's tool binding process.
         """
+        self.logger.info("="*80)
+        self.logger.info("🌐 INICIALIZANDO MCP (Model Context Protocol)")
+        self.logger.info("="*80)
+        
         try:
+            self.logger.info(f"📋 Servidores a inicializar: {len(mcp_servers)}")
+            
+            for server_name, server_config in mcp_servers.items():
+                self.logger.info(f"\n🔌 Servidor: {server_name}")
+                self.logger.debug(f"   Command: {server_config.get('command')}")
+                self.logger.debug(f"   Args: {server_config.get('args')}")
+                self.logger.debug(f"   Transport: {server_config.get('transport')}")
+            
+            self.logger.info("\n🔄 Creando MultiServerMCPClient...")
             self.mcp_client = MultiServerMCPClient(mcp_servers)
+            self.logger.info("✅ MultiServerMCPClient creado")
+            
+            self.logger.info("🔄 Obteniendo herramientas desde servidores MCP...")
             mcp_tools = asyncio.run(self.mcp_client.get_tools())
+            
+            self.logger.info(f"📥 Herramientas MCP recibidas: {len(mcp_tools)}")
+            
+            if mcp_tools:
+                for i, tool in enumerate(mcp_tools, 1):
+                    tool_name = getattr(tool, 'name', 'Unknown')
+                    tool_desc = getattr(tool, 'description', 'Sin descripción')
+                    self.logger.debug(f"   {i}. {tool_name}: {tool_desc[:100]}...")
+            
             self.tools.extend(mcp_tools)
-            print(f"✅ MCP initialized: {len(mcp_tools)} tools from {len(mcp_servers)} servers")
+            
+            self.logger.info(f"✅ MCP inicializado exitosamente")
+            self.logger.info(f"📊 Total herramientas disponibles: {len(self.tools)}")
+            self.logger.info(f"   - Herramientas MCP: {len(mcp_tools)}")
+            self.logger.info(f"   - Herramientas previas: {len(self.tools) - len(mcp_tools)}")
+            self.logger.info("="*80 + "\n")
+            
         except Exception as e:
-            print(f"⚠️ MCP initialization error: {e}")
+            self.logger.error("="*80)
+            self.logger.error("❌ ERROR EN INICIALIZACIÓN MCP")
+            self.logger.error("="*80)
+            self.logger.error(f"Tipo de error: {type(e).__name__}")
+            self.logger.error(f"Mensaje: {str(e)}")
+            self.logger.exception("Traceback completo:")
+            self.logger.error("="*80 + "\n")
+            
             self.mcp_client = None
+            
+            # Mensaje de diagnóstico
+            self.logger.warning("⚠️ Continuando sin MCP - solo herramientas locales disponibles")
+            self.logger.warning(f"   Herramientas disponibles: {len(self.tools)}")
 
     def _prepare_model_with_tools(self):
         """
@@ -137,13 +208,31 @@ class LangChainBot:
             The language model with tools bound, or the original model if no tools are available
         """
         if self.tools:
-            return self.language_model.model.bind_tools(self.tools)
-        return self.language_model.model
+            self.logger.info(f"🔗 Vinculando {len(self.tools)} herramientas al modelo")
+            try:
+                bound_model = self.language_model.model.bind_tools(self.tools)
+                self.logger.info("✅ Herramientas vinculadas correctamente")
+                return bound_model
+            except Exception as e:
+                self.logger.error(f"❌ Error vinculando herramientas: {e}")
+                self.logger.exception("Traceback:")
+                return self.language_model.model
+        else:
+            self.logger.debug("⚪ Sin herramientas para vincular, usando modelo base")
+            return self.language_model.model
 
     def _build_modern_instructions(self) -> str:
+        """
+        Build modern instructions with automatic tool documentation.
+        
+        Returns:
+            str: Enhanced instructions with tool descriptions
+        """
         instructions = self.base_instructions
         
         if self.tools:
+            self.logger.info(f"📝 Generando documentación para {len(self.tools)} herramientas")
+            
             tools_description = "\n\n# Available Tools\n\n"
             
             for tool in self.tools:
@@ -157,7 +246,7 @@ class LangChainBot:
                         required = "**REQUIRED**" if field_info.is_required() else "*optional*"
                         tools_description += f"- `{field_name}` ({field_info.annotation.__name__}, {required}): {field_info.description}\n"
                 
-                # Opción 2: args_schema es un dict (MCP Tools) ← NUEVO
+                # Opción 2: args_schema es un dict (MCP Tools)
                 elif hasattr(tool, 'args_schema') and isinstance(tool.args_schema, dict):
                     if 'properties' in tool.args_schema:
                         tools_description += f"**Parameters:**\n"
@@ -187,6 +276,7 @@ class LangChainBot:
                                 "- Do NOT call tools with empty arguments\n")
             
             instructions += tools_description
+            self.logger.info(f"✅ Documentación de herramientas agregada ({len(tools_description)} caracteres)")
         
         return instructions
 
@@ -203,24 +293,14 @@ class LangChainBot:
         Returns:
             StateGraph: Compiled LangGraph workflow ready for execution
         """
+        self.logger.info("🔄 Construyendo workflow de LangGraph")
         
         def agent_node(state: ChatState) -> ChatState:
             """
             Main agent node responsible for generating responses and initiating tool calls.
-            
-            This node:
-            1. Extracts the latest user message from the conversation state
-            2. Retrieves relevant context from processed files
-            3. Constructs a complete message history for the model
-            4. Invokes the model with tool binding for native function calling
-            5. Returns updated state with the model's response
-            
-            Args:
-                state (ChatState): Current conversation state
-                
-            Returns:
-                ChatState: Updated state with agent response
             """
+            self.logger.debug("🤖 Ejecutando agent_node")
+            
             # Extract the most recent user message
             last_user_message = None
             for msg in reversed(state["messages"]):
@@ -229,10 +309,15 @@ class LangChainBot:
                     break
             
             if not last_user_message:
+                self.logger.warning("⚠️ No se encontró mensaje de usuario")
                 return state
+            
+            self.logger.debug(f"💬 Mensaje usuario: {last_user_message[:100]}...")
             
             # Retrieve contextual information from processed files
             context = self._get_context(last_user_message)
+            if context:
+                self.logger.debug(f"📚 Contexto recuperado: {len(context)} caracteres")
             
             # Build system prompt with optional context
             system_content = self.instructions
@@ -249,23 +334,33 @@ class LangChainBot:
                 elif isinstance(msg, AIMessage):
                     messages.append({"role": "assistant", "content": msg.content or ""})
                 elif isinstance(msg, ToolMessage):
-                    # Convert tool results to user messages for context
                     messages.append({"role": "user", "content": f"Tool result: {msg.content}"})
+            
+            self.logger.debug(f"📨 Enviando {len(messages)} mensajes al modelo")
             
             try:
                 # Invoke model with native tool binding
                 response = self.model_with_tools.invoke(messages)
                 
+                self.logger.debug(f"✅ Respuesta recibida del modelo")
+                
+                # Check for tool calls
+                if hasattr(response, 'tool_calls') and response.tool_calls:
+                    self.logger.info(f"🔧 Llamadas a herramientas detectadas: {len(response.tool_calls)}")
+                    for i, tc in enumerate(response.tool_calls, 1):
+                        tool_name = tc.get('name', 'Unknown')
+                        self.logger.debug(f"   {i}. {tool_name}")
+                
                 # Return updated state
                 return {
                     **state,
                     "context": context,
-                    "messages": [response]  # add_messages annotation handles proper appending
+                    "messages": [response]
                 }
                 
             except Exception as e:
-                print(f"Error in agent_node: {e}")
-                # Graceful fallback for error scenarios
+                self.logger.error(f"❌ Error en agent_node: {e}")
+                self.logger.exception("Traceback:")
                 fallback_response = AIMessage(content="I apologize, but I encountered an error processing your request.")
                 return {
                     **state,
@@ -276,24 +371,16 @@ class LangChainBot:
         def should_continue(state: ChatState) -> str:
             """
             Conditional edge function to determine workflow continuation.
-            
-            Analyzes the last message to decide whether to execute tools or end the workflow.
-            This leverages LangGraph's native tool calling detection.
-            
-            Args:
-                state (ChatState): Current conversation state
-                
-            Returns:
-                str: Next node to execute ("tools" or "end")
             """
             last_message = state["messages"][-1]
             
-            # Check for pending tool calls using native tool calling detection
             if (isinstance(last_message, AIMessage) and 
                 hasattr(last_message, 'tool_calls') and 
                 last_message.tool_calls):
+                self.logger.debug("➡️ Continuando a ejecución de herramientas")
                 return "tools"
             
+            self.logger.debug("🏁 Finalizando workflow")
             return "end"
 
         # Construct the workflow graph
@@ -301,18 +388,18 @@ class LangChainBot:
         
         # Add primary agent node
         workflow.add_node("agent", agent_node)
+        self.logger.debug("✅ Nodo 'agent' agregado")
         
         # Add tool execution node if tools are available
         if self.tools:
-            # ToolNode automatically handles tool execution and result formatting
             tool_node = ToolNode(self.tools)
             workflow.add_node("tools", tool_node)
+            self.logger.debug("✅ Nodo 'tools' agregado")
         
         # Define workflow edges and entry point
         workflow.set_entry_point("agent")
         
         if self.tools:
-            # Conditional routing based on tool call presence
             workflow.add_conditional_edges(
                 "agent",
                 should_continue,
@@ -321,17 +408,21 @@ class LangChainBot:
                     "end": END
                 }
             )
-            # Return to agent after tool execution for final response formatting
             workflow.add_edge("tools", "agent")
+            self.logger.debug("✅ Edges condicionales configurados")
         else:
-            # Direct termination if no tools are available
             workflow.add_edge("agent", END)
+            self.logger.debug("✅ Edge directo a END configurado")
         
         # Compile workflow with optional checkpointing
         if self.checkpointer:
-            return workflow.compile(checkpointer=self.checkpointer)
+            compiled = workflow.compile(checkpointer=self.checkpointer)
+            self.logger.info("✅ Workflow compilado con checkpointer")
         else:
-            return workflow.compile()
+            compiled = workflow.compile()
+            self.logger.info("✅ Workflow compilado sin checkpointer")
+        
+        return compiled
 
     # ===== LEGACY API COMPATIBILITY =====
     
@@ -355,61 +446,70 @@ class LangChainBot:
             This method automatically handles tool execution and context integration
             from processed files while maintaining the original API signature.
         """
+        self.logger.info("="*80)
+        self.logger.info("📨 GET_RESPONSE llamado")
+        self.logger.debug(f"💬 Input: {user_input[:200]}...")
+        
         # Prepare initial workflow state
         initial_state = {
             "messages": self.chat_history + [HumanMessage(content=user_input)],
             "context": ""
         }
         
-        # Execute the LangGraph workflow
-        #result = self.graph.invoke(initial_state)
-
-         # Siempre usar ainvoke (funciona para ambos casos)
-        result = asyncio.run(self.graph.ainvoke(initial_state))
+        self.logger.debug(f"📊 Estado inicial: {len(initial_state['messages'])} mensajes")
         
-        # Update internal conversation history
-        self.chat_history = result["messages"]
-        
-        # Extract final response from the last assistant message
-        final_response = ""
-        total_input_tokens = 0
-        total_output_tokens = 0
-        
-        for msg in reversed(result["messages"]):
-            if isinstance(msg, AIMessage) and msg.content:
-                final_response = msg.content
-                break
-        
-        # Extract token usage from response metadata
-        last_message = result["messages"][-1]
-        if hasattr(last_message, 'response_metadata'):
-            token_usage = last_message.response_metadata.get('token_usage', {})
-            total_input_tokens = token_usage.get('prompt_tokens', 0)
-            total_output_tokens = token_usage.get('completion_tokens', 0)
-        
-        return ResponseModel(
-            user_tokens=total_input_tokens,
-            bot_tokens=total_output_tokens,
-            response=final_response
-        )
+        try:
+            # Execute the LangGraph workflow
+            self.logger.info("🔄 Ejecutando workflow...")
+            result = asyncio.run(self.graph.ainvoke(initial_state))
+            self.logger.info("✅ Workflow completado")
+            
+            # Update internal conversation history
+            self.chat_history = result["messages"]
+            self.logger.debug(f"💾 Historial actualizado: {len(self.chat_history)} mensajes")
+            
+            # Extract final response from the last assistant message
+            final_response = ""
+            total_input_tokens = 0
+            total_output_tokens = 0
+            
+            for msg in reversed(result["messages"]):
+                if isinstance(msg, AIMessage) and msg.content:
+                    final_response = msg.content
+                    break
+            
+            # Extract token usage from response metadata
+            last_message = result["messages"][-1]
+            if hasattr(last_message, 'response_metadata'):
+                token_usage = last_message.response_metadata.get('token_usage', {})
+                total_input_tokens = token_usage.get('prompt_tokens', 0)
+                total_output_tokens = token_usage.get('completion_tokens', 0)
+            
+            self.logger.info(f"📊 Tokens: input={total_input_tokens}, output={total_output_tokens}")
+            self.logger.info(f"📝 Respuesta: {len(final_response)} caracteres")
+            self.logger.info("="*80 + "\n")
+            
+            return ResponseModel(
+                user_tokens=total_input_tokens,
+                bot_tokens=total_output_tokens,
+                response=final_response
+            )
+            
+        except Exception as e:
+            self.logger.error("="*80)
+            self.logger.error("❌ ERROR EN GET_RESPONSE")
+            self.logger.error(f"Mensaje: {str(e)}")
+            self.logger.exception("Traceback:")
+            self.logger.error("="*80 + "\n")
+            raise
     
     def get_response_stream(self, user_input: str) -> Generator[str, None, None]:
         """
         Generate a streaming response for real-time user interaction.
-        
-        This method provides streaming capabilities while maintaining backward
-        compatibility with the original API.
-        
-        Args:
-            user_input (str): The user's message or query
-            
-        Yields:
-            str: Response chunks as they are generated
-            
-        Note:
-            Current implementation streams complete responses. For token-level
-            streaming, consider using the model's native streaming capabilities.
         """
+        self.logger.info("📨 GET_RESPONSE_STREAM llamado")
+        self.logger.debug(f"💬 Input: {user_input[:200]}...")
+        
         initial_state = {
             "messages": self.chat_history + [HumanMessage(content=user_input)],
             "context": ""
@@ -417,156 +517,105 @@ class LangChainBot:
         
         accumulated_response = ""
         
-        # Stream workflow execution
-        for chunk in self.graph.stream(initial_state):
-            # Extract content from workflow chunks
-            if "agent" in chunk:
-                for message in chunk["agent"]["messages"]:
-                    if isinstance(message, AIMessage) and message.content:
-                        # Stream complete responses (can be enhanced for token-level streaming)
-                        accumulated_response = message.content
-                        yield message.content
-        
-        # Update conversation history after streaming completion
-        if accumulated_response:
-            self.chat_history.extend([
-                HumanMessage(content=user_input),
-                AIMessage(content=accumulated_response)
-            ])
+        try:
+            for chunk in self.graph.stream(initial_state):
+                if "agent" in chunk:
+                    for message in chunk["agent"]["messages"]:
+                        if isinstance(message, AIMessage) and message.content:
+                            accumulated_response = message.content
+                            yield message.content
+            
+            if accumulated_response:
+                self.chat_history.extend([
+                    HumanMessage(content=user_input),
+                    AIMessage(content=accumulated_response)
+                ])
+                
+            self.logger.info(f"✅ Stream completado: {len(accumulated_response)} caracteres")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error en stream: {e}")
+            self.logger.exception("Traceback:")
+            raise
 
     def load_conversation_history(self, messages: List[Message]):
         """
         Load conversation history from Django model instances.
-        
-        This method maintains compatibility with existing Django-based conversation
-        storage while preparing the history for modern LangGraph processing.
-        
-        Args:
-            messages (List[Message]): List of Django Message model instances
-                Expected to have 'content' and 'is_bot' attributes
         """
+        self.logger.info(f"📥 Cargando historial: {len(messages)} mensajes")
         self.chat_history.clear()
         for message in messages:
             if message.is_bot:
                 self.chat_history.append(AIMessage(content=message.content))
             else:
                 self.chat_history.append(HumanMessage(content=message.content))
+        self.logger.debug("✅ Historial cargado")
 
     def save_messages(self, user_message: str, bot_response: str):
         """
         Save messages to internal conversation history.
-        
-        This method provides backward compatibility for manual history management.
-        
-        Args:
-            user_message (str): The user's input message
-            bot_response (str): The bot's generated response
         """
+        self.logger.debug("💾 Guardando mensajes en historial interno")
         self.chat_history.append(HumanMessage(content=user_message))
         self.chat_history.append(AIMessage(content=bot_response))
 
     def process_file(self, file: FileProcessorInterface):
         """
         Process and index a file for contextual retrieval.
-        
-        This method maintains compatibility with existing file processing workflows
-        while leveraging FAISS for efficient similarity search.
-        
-        Args:
-            file (FileProcessorInterface): File processor instance that implements getText()
-            
-        Note:
-            Processed files are automatically available for context retrieval
-            in subsequent conversations without additional configuration.
         """
-        document = file.getText()
-        text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-        texts = text_splitter.split_documents(document)
+        self.logger.info("📄 Procesando archivo para indexación")
+        try:
+            document = file.getText()
+            text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+            texts = text_splitter.split_documents(document)
+            
+            self.logger.debug(f"✂️ Documento dividido en {len(texts)} chunks")
 
-        if self.vector_store is None:
-            self.vector_store = FAISS.from_texts(
-                [doc.page_content for doc in texts], 
-                self.embeddings
-            )
-        else:
-            self.vector_store.add_texts([doc.page_content for doc in texts])
+            if self.vector_store is None:
+                self.vector_store = FAISS.from_texts(
+                    [doc.page_content for doc in texts], 
+                    self.embeddings
+                )
+                self.logger.info("✅ Vector store creado")
+            else:
+                self.vector_store.add_texts([doc.page_content for doc in texts])
+                self.logger.info("✅ Textos agregados a vector store existente")
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error procesando archivo: {e}")
+            self.logger.exception("Traceback:")
+            raise
 
     def clear_memory(self):
         """
         Clear conversation history and processed file context.
-        
-        This method resets the bot to a clean state, removing all conversation
-        history and processed file context.
         """
+        self.logger.info("🗑️ Limpiando memoria")
         self.chat_history.clear()
         self.vector_store = None
+        self.logger.debug("✅ Memoria limpiada")
 
     def get_chat_history(self) -> List[BaseMessage]:
         """
         Retrieve a copy of the current conversation history.
-        
-        Returns:
-            List[BaseMessage]: Copy of the conversation history
         """
         return self.chat_history.copy()
 
     def set_chat_history(self, history: List[BaseMessage]):
         """
         Set the conversation history from a list of BaseMessage instances.
-        
-        Args:
-            history (List[BaseMessage]): New conversation history to set
         """
+        self.logger.info(f"📝 Estableciendo historial: {len(history)} mensajes")
         self.chat_history = history.copy()
 
     def _get_context(self, query: str) -> str:
         """
         Retrieve relevant context from processed files using similarity search.
-        
-        This method performs semantic search over processed file content to find
-        the most relevant information for the current query.
-        
-        Args:
-            query (str): The query to search for relevant context
-            
-        Returns:
-            str: Concatenated relevant context from processed files
         """
         if self.vector_store:
+            self.logger.debug(f"🔍 Buscando contexto para query: {query[:100]}...")
             docs = self.vector_store.similarity_search(query, k=4)
-            return "\n".join([doc.page_content for doc in docs])
-        return ""
-    
-    def process_file(self, file: FileProcessorInterface):
-        """API original - Procesa archivo y lo añade al vector store"""
-        document = file.getText()
-        text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-        texts = text_splitter.split_documents(document)
-
-        if self.vector_store is None:
-            self.vector_store = FAISS.from_texts(
-                [doc.page_content for doc in texts], 
-                self.embeddings
-            )
-        else:
-            self.vector_store.add_texts([doc.page_content for doc in texts])
-
-    def clear_memory(self):
-        """API original - Limpia la memoria de conversación"""
-        self.chat_history.clear()
-        self.vector_store = None
-
-    def get_chat_history(self) -> List[BaseMessage]:
-        """API original - Obtiene el historial completo"""
-        return self.chat_history.copy()
-
-    def set_chat_history(self, history: List[BaseMessage]):
-        """API original - Establece el historial de conversación"""
-        self.chat_history = history.copy()
-
-    def _get_context(self, query: str) -> str:
-        """Obtiene contexto relevante de archivos procesados"""
-        if self.vector_store:
-            docs = self.vector_store.similarity_search(query, k=4)
-            return "\n".join([doc.page_content for doc in docs])
+            context = "\n".join([doc.page_content for doc in docs])
+            self.logger.debug(f"✅ Contexto encontrado: {len(context)} caracteres")
+            return context
         return ""
