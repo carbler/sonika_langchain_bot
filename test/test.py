@@ -76,6 +76,6 @@ def clasification():
     result = classifier.classify("how are you?")
     print(result)
 
-bot_bdi()
+#bot_bdi()
 #bot_bdi_streaming()
-#clasification()
+clasification()

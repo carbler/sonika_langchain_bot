@@ -40,7 +40,6 @@ class LangChainBot:
         - Thread-based conversation persistence
         - Streaming responses
         - Backward compatibility with legacy APIs
-        - Debug logging injection for production troubleshooting
     """
 
     def __init__(self, 
@@ -61,7 +60,7 @@ class LangChainBot:
             tools (List[BaseTool], optional): Traditional LangChain tools to bind to the model
             mcp_servers (Dict[str, Any], optional): MCP server configurations for dynamic tool loading
             use_checkpointer (bool): Enable automatic conversation persistence using LangGraph checkpoints
-            logger (logging.Logger, optional): Logger instance for debugging. If None, uses silent NullHandler
+            logger (Optional[logging.Logger]): Logger instance for error tracking (silent by default if not provided)
         
         Note:
             The instructions will be automatically enhanced with tool descriptions
@@ -128,29 +127,8 @@ class LangChainBot:
         """
         try:
             self.mcp_client = MultiServerMCPClient(mcp_servers)
-            
-            # Fix para Apache/mod_wsgi
-            import subprocess
-            original_create = asyncio.create_subprocess_exec
-            
-            async def fixed_create(*args, stdin=None, stdout=None, stderr=None, **kwargs):
-                return await original_create(
-                    *args,
-                    stdin=stdin or subprocess.PIPE,
-                    stdout=stdout or subprocess.PIPE,
-                    stderr=stderr or subprocess.PIPE,
-                    **kwargs
-                )
-            
-            asyncio.create_subprocess_exec = fixed_create
-            
-            try:
-                mcp_tools = asyncio.run(self.mcp_client.get_tools())
-            finally:
-                asyncio.create_subprocess_exec = original_create
-            
+            mcp_tools = asyncio.run(self.mcp_client.get_tools())
             self.tools.extend(mcp_tools)
-            
         except Exception as e:
             self.logger.error(f"Error inicializando MCP: {e}")
             self.logger.exception("Traceback completo:")
@@ -167,21 +145,10 @@ class LangChainBot:
             The language model with tools bound, or the original model if no tools are available
         """
         if self.tools:
-            try:
-                return self.language_model.model.bind_tools(self.tools)
-            except Exception as e:
-                self.logger.error(f"Error vinculando herramientas: {e}")
-                self.logger.exception("Traceback:")
-                return self.language_model.model
+            return self.language_model.model.bind_tools(self.tools)
         return self.language_model.model
 
     def _build_modern_instructions(self) -> str:
-        """
-        Build modern instructions with automatic tool documentation.
-        
-        Returns:
-            str: Enhanced instructions with tool descriptions
-        """
         instructions = self.base_instructions
         
         if self.tools:
@@ -198,7 +165,7 @@ class LangChainBot:
                         required = "**REQUIRED**" if field_info.is_required() else "*optional*"
                         tools_description += f"- `{field_name}` ({field_info.annotation.__name__}, {required}): {field_info.description}\n"
                 
-                # Opción 2: args_schema es un dict (MCP Tools)
+                # Opción 2: args_schema es un dict (MCP Tools) ← NUEVO
                 elif hasattr(tool, 'args_schema') and isinstance(tool.args_schema, dict):
                     if 'properties' in tool.args_schema:
                         tools_description += f"**Parameters:**\n"
@@ -248,6 +215,19 @@ class LangChainBot:
         def agent_node(state: ChatState) -> ChatState:
             """
             Main agent node responsible for generating responses and initiating tool calls.
+            
+            This node:
+            1. Extracts the latest user message from the conversation state
+            2. Retrieves relevant context from processed files
+            3. Constructs a complete message history for the model
+            4. Invokes the model with tool binding for native function calling
+            5. Returns updated state with the model's response
+            
+            Args:
+                state (ChatState): Current conversation state
+                
+            Returns:
+                ChatState: Updated state with agent response
             """
             # Extract the most recent user message
             last_user_message = None
@@ -277,6 +257,7 @@ class LangChainBot:
                 elif isinstance(msg, AIMessage):
                     messages.append({"role": "assistant", "content": msg.content or ""})
                 elif isinstance(msg, ToolMessage):
+                    # Convert tool results to user messages for context
                     messages.append({"role": "user", "content": f"Tool result: {msg.content}"})
             
             try:
@@ -287,12 +268,13 @@ class LangChainBot:
                 return {
                     **state,
                     "context": context,
-                    "messages": [response]
+                    "messages": [response]  # add_messages annotation handles proper appending
                 }
                 
             except Exception as e:
                 self.logger.error(f"Error en agent_node: {e}")
-                self.logger.exception("Traceback:")
+                self.logger.exception("Traceback completo:")
+                # Graceful fallback for error scenarios
                 fallback_response = AIMessage(content="I apologize, but I encountered an error processing your request.")
                 return {
                     **state,
@@ -303,9 +285,19 @@ class LangChainBot:
         def should_continue(state: ChatState) -> str:
             """
             Conditional edge function to determine workflow continuation.
+            
+            Analyzes the last message to decide whether to execute tools or end the workflow.
+            This leverages LangGraph's native tool calling detection.
+            
+            Args:
+                state (ChatState): Current conversation state
+                
+            Returns:
+                str: Next node to execute ("tools" or "end")
             """
             last_message = state["messages"][-1]
             
+            # Check for pending tool calls using native tool calling detection
             if (isinstance(last_message, AIMessage) and 
                 hasattr(last_message, 'tool_calls') and 
                 last_message.tool_calls):
@@ -321,6 +313,7 @@ class LangChainBot:
         
         # Add tool execution node if tools are available
         if self.tools:
+            # ToolNode automatically handles tool execution and result formatting
             tool_node = ToolNode(self.tools)
             workflow.add_node("tools", tool_node)
         
@@ -328,6 +321,7 @@ class LangChainBot:
         workflow.set_entry_point("agent")
         
         if self.tools:
+            # Conditional routing based on tool call presence
             workflow.add_conditional_edges(
                 "agent",
                 should_continue,
@@ -336,8 +330,10 @@ class LangChainBot:
                     "end": END
                 }
             )
+            # Return to agent after tool execution for final response formatting
             workflow.add_edge("tools", "agent")
         else:
+            # Direct termination if no tools are available
             workflow.add_edge("agent", END)
         
         # Compile workflow with optional checkpointing
@@ -374,44 +370,52 @@ class LangChainBot:
             "context": ""
         }
         
-        try:
-            # Execute the LangGraph workflow
-            result = asyncio.run(self.graph.ainvoke(initial_state))
-            
-            # Update internal conversation history
-            self.chat_history = result["messages"]
-            
-            # Extract final response from the last assistant message
-            final_response = ""
-            total_input_tokens = 0
-            total_output_tokens = 0
-            
-            for msg in reversed(result["messages"]):
-                if isinstance(msg, AIMessage) and msg.content:
-                    final_response = msg.content
-                    break
-            
-            # Extract token usage from response metadata
-            last_message = result["messages"][-1]
-            if hasattr(last_message, 'response_metadata'):
-                token_usage = last_message.response_metadata.get('token_usage', {})
-                total_input_tokens = token_usage.get('prompt_tokens', 0)
-                total_output_tokens = token_usage.get('completion_tokens', 0)
-            
-            return ResponseModel(
-                user_tokens=total_input_tokens,
-                bot_tokens=total_output_tokens,
-                response=final_response
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Error en get_response: {e}")
-            self.logger.exception("Traceback:")
-            raise
+        # Execute the LangGraph workflow
+        # Siempre usar ainvoke (funciona para ambos casos)
+        result = asyncio.run(self.graph.ainvoke(initial_state))
+        
+        # Update internal conversation history
+        self.chat_history = result["messages"]
+        
+        # Extract final response from the last assistant message
+        final_response = ""
+        total_input_tokens = 0
+        total_output_tokens = 0
+        
+        for msg in reversed(result["messages"]):
+            if isinstance(msg, AIMessage) and msg.content:
+                final_response = msg.content
+                break
+        
+        # Extract token usage from response metadata
+        last_message = result["messages"][-1]
+        if hasattr(last_message, 'response_metadata'):
+            token_usage = last_message.response_metadata.get('token_usage', {})
+            total_input_tokens = token_usage.get('prompt_tokens', 0)
+            total_output_tokens = token_usage.get('completion_tokens', 0)
+        
+        return ResponseModel(
+            user_tokens=total_input_tokens,
+            bot_tokens=total_output_tokens,
+            response=final_response
+        )
     
     def get_response_stream(self, user_input: str) -> Generator[str, None, None]:
         """
         Generate a streaming response for real-time user interaction.
+        
+        This method provides streaming capabilities while maintaining backward
+        compatibility with the original API.
+        
+        Args:
+            user_input (str): The user's message or query
+            
+        Yields:
+            str: Response chunks as they are generated
+            
+        Note:
+            Current implementation streams complete responses. For token-level
+            streaming, consider using the model's native streaming capabilities.
         """
         initial_state = {
             "messages": self.chat_history + [HumanMessage(content=user_input)],
@@ -420,28 +424,33 @@ class LangChainBot:
         
         accumulated_response = ""
         
-        try:
-            for chunk in self.graph.stream(initial_state):
-                if "agent" in chunk:
-                    for message in chunk["agent"]["messages"]:
-                        if isinstance(message, AIMessage) and message.content:
-                            accumulated_response = message.content
-                            yield message.content
-            
-            if accumulated_response:
-                self.chat_history.extend([
-                    HumanMessage(content=user_input),
-                    AIMessage(content=accumulated_response)
-                ])
-            
-        except Exception as e:
-            self.logger.error(f"Error en stream: {e}")
-            self.logger.exception("Traceback:")
-            raise
+        # Stream workflow execution
+        for chunk in self.graph.stream(initial_state):
+            # Extract content from workflow chunks
+            if "agent" in chunk:
+                for message in chunk["agent"]["messages"]:
+                    if isinstance(message, AIMessage) and message.content:
+                        # Stream complete responses (can be enhanced for token-level streaming)
+                        accumulated_response = message.content
+                        yield message.content
+        
+        # Update conversation history after streaming completion
+        if accumulated_response:
+            self.chat_history.extend([
+                HumanMessage(content=user_input),
+                AIMessage(content=accumulated_response)
+            ])
 
     def load_conversation_history(self, messages: List[Message]):
         """
         Load conversation history from Django model instances.
+        
+        This method maintains compatibility with existing Django-based conversation
+        storage while preparing the history for modern LangGraph processing.
+        
+        Args:
+            messages (List[Message]): List of Django Message model instances
+                Expected to have 'content' and 'is_bot' attributes
         """
         self.chat_history.clear()
         for message in messages:
@@ -453,6 +462,12 @@ class LangChainBot:
     def save_messages(self, user_message: str, bot_response: str):
         """
         Save messages to internal conversation history.
+        
+        This method provides backward compatibility for manual history management.
+        
+        Args:
+            user_message (str): The user's input message
+            bot_response (str): The bot's generated response
         """
         self.chat_history.append(HumanMessage(content=user_message))
         self.chat_history.append(AIMessage(content=bot_response))
@@ -460,28 +475,35 @@ class LangChainBot:
     def process_file(self, file: FileProcessorInterface):
         """
         Process and index a file for contextual retrieval.
+        
+        This method maintains compatibility with existing file processing workflows
+        while leveraging FAISS for efficient similarity search.
+        
+        Args:
+            file (FileProcessorInterface): File processor instance that implements getText()
+            
+        Note:
+            Processed files are automatically available for context retrieval
+            in subsequent conversations without additional configuration.
         """
-        try:
-            document = file.getText()
-            text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-            texts = text_splitter.split_documents(document)
+        document = file.getText()
+        text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+        texts = text_splitter.split_documents(document)
 
-            if self.vector_store is None:
-                self.vector_store = FAISS.from_texts(
-                    [doc.page_content for doc in texts], 
-                    self.embeddings
-                )
-            else:
-                self.vector_store.add_texts([doc.page_content for doc in texts])
-                
-        except Exception as e:
-            self.logger.error(f"Error procesando archivo: {e}")
-            self.logger.exception("Traceback:")
-            raise
+        if self.vector_store is None:
+            self.vector_store = FAISS.from_texts(
+                [doc.page_content for doc in texts], 
+                self.embeddings
+            )
+        else:
+            self.vector_store.add_texts([doc.page_content for doc in texts])
 
     def clear_memory(self):
         """
         Clear conversation history and processed file context.
+        
+        This method resets the bot to a clean state, removing all conversation
+        history and processed file context.
         """
         self.chat_history.clear()
         self.vector_store = None
@@ -489,19 +511,68 @@ class LangChainBot:
     def get_chat_history(self) -> List[BaseMessage]:
         """
         Retrieve a copy of the current conversation history.
+        
+        Returns:
+            List[BaseMessage]: Copy of the conversation history
         """
         return self.chat_history.copy()
 
     def set_chat_history(self, history: List[BaseMessage]):
         """
         Set the conversation history from a list of BaseMessage instances.
+        
+        Args:
+            history (List[BaseMessage]): New conversation history to set
         """
         self.chat_history = history.copy()
 
     def _get_context(self, query: str) -> str:
         """
         Retrieve relevant context from processed files using similarity search.
+        
+        This method performs semantic search over processed file content to find
+        the most relevant information for the current query.
+        
+        Args:
+            query (str): The query to search for relevant context
+            
+        Returns:
+            str: Concatenated relevant context from processed files
         """
+        if self.vector_store:
+            docs = self.vector_store.similarity_search(query, k=4)
+            return "\n".join([doc.page_content for doc in docs])
+        return ""
+    
+    def process_file(self, file: FileProcessorInterface):
+        """API original - Procesa archivo y lo añade al vector store"""
+        document = file.getText()
+        text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+        texts = text_splitter.split_documents(document)
+
+        if self.vector_store is None:
+            self.vector_store = FAISS.from_texts(
+                [doc.page_content for doc in texts], 
+                self.embeddings
+            )
+        else:
+            self.vector_store.add_texts([doc.page_content for doc in texts])
+
+    def clear_memory(self):
+        """API original - Limpia la memoria de conversación"""
+        self.chat_history.clear()
+        self.vector_store = None
+
+    def get_chat_history(self) -> List[BaseMessage]:
+        """API original - Obtiene el historial completo"""
+        return self.chat_history.copy()
+
+    def set_chat_history(self, history: List[BaseMessage]):
+        """API original - Establece el historial de conversación"""
+        self.chat_history = history.copy()
+
+    def _get_context(self, query: str) -> str:
+        """Obtiene contexto relevante de archivos procesados"""
         if self.vector_store:
             docs = self.vector_store.similarity_search(query, k=4)
             return "\n".join([doc.page_content for doc in docs])
