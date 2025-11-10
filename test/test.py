@@ -17,6 +17,19 @@ from pydantic import BaseModel, Field
 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
 load_dotenv(env_path)
 
+ # Ejemplo 1: Con callbacks
+def on_tool_start(tool_name: str, input_data: str):
+    print(f"🔧 Ejecutando tool: {tool_name}")
+    print(f"   Input: {input_data}")
+def on_tool_end(tool_name: str, output: str):
+    print(f"✅ Tool completada: {tool_name}")
+    print(f"   Output: {output[:100]}...")  # Primeros 100 chars
+
+def on_tool_error(tool_name: str, error: str):
+    print(f"❌ Tool falló: {tool_name}")
+    print(f"   Error: {error}")
+
+
 def bot_bdi():
     # Obtener claves de API desde el archivo .env
     api_key = os.getenv("OPENAI_API_KEY")
@@ -25,7 +38,14 @@ def bot_bdi():
     embeddings = OpenAIEmbeddings(api_key=api_key)
 
     tools =[EmailTool()]
-    bot = LangChainBot(language_model, embeddings,  instructions="Eres un agente" , tools=tools)
+    bot = LangChainBot(
+        language_model, 
+        embeddings,  
+        instructions="Eres un agente" ,
+        tools=tools, 
+        on_tool_start=on_tool_start,
+        on_tool_end=on_tool_end,
+        on_tool_error=on_tool_error)
 
     user_message = 'Envia un email con la tool a erley@gmail.com con el asunto Hola y el mensaje Hola Erley'
 
@@ -34,7 +54,9 @@ def bot_bdi():
     response_model: ResponseModel = bot.get_response(user_message)
     bot_response = response_model
 
-    print(bot_response)
+    print("Bot response",bot_response)
+
+
 
 def bot_bdi_streaming():
     # Obtener claves de API desde el archivo .env
@@ -76,6 +98,6 @@ def clasification():
     result = classifier.classify("how are you?")
     print(result)
 
-#bot_bdi()
+bot_bdi()
 #bot_bdi_streaming()
-clasification()
+#clasification()

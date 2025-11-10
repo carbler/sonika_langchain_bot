@@ -1,4 +1,4 @@
-from typing import Generator, List, Optional, Dict, Any, TypedDict, Annotated
+from typing import Generator, List, Optional, Dict, Any, TypedDict, Annotated, Callable
 import asyncio
 import logging
 from langchain.schema import AIMessage, HumanMessage, BaseMessage
@@ -6,6 +6,7 @@ from langchain_core.messages import ToolMessage
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_community.tools import BaseTool
+from langchain.callbacks.base import BaseCallbackHandler
 from langgraph.graph import StateGraph, END, add_messages
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
@@ -25,6 +26,101 @@ class ChatState(TypedDict):
     messages: Annotated[List[BaseMessage], add_messages]
     context: str
 
+class _InternalToolLogger(BaseCallbackHandler):
+    """
+    Internal callback handler that bridges LangChain callbacks to user-provided functions.
+    
+    This class is used internally to forward tool execution events to the optional
+    callback functions provided by the user during bot initialization.
+    """
+    
+    def __init__(self, 
+                 on_start: Optional[Callable[[str, str], None]] = None,
+                 on_end: Optional[Callable[[str, str], None]] = None,
+                 on_error: Optional[Callable[[str, str], None]] = None):
+        """
+        Initialize the internal tool logger.
+        
+        Args:
+            on_start: Optional callback function called when a tool starts execution
+            on_end: Optional callback function called when a tool completes successfully
+            on_error: Optional callback function called when a tool encounters an error
+        """
+        super().__init__()
+        self.on_start_callback = on_start
+        self.on_end_callback = on_end
+        self.on_error_callback = on_error
+        self.current_tool_name = None
+        self.tool_executions = []  # Para tracking interno si se necesita
+    
+    def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs) -> None:
+
+        print(f"DEBUG: on_tool_start se ejecutó!")  # ← AGREGAR ESTO
+
+
+        """Called when a tool starts executing."""
+        tool_name = serialized.get("name", "unknown")
+        self.current_tool_name = tool_name
+        
+        # Track execution internally
+        self.tool_executions.append({
+            "tool": tool_name,
+            "input": input_str,
+            "status": "started"
+        })
+        
+        # Call user's callback if provided
+        if self.on_start_callback:
+            try:
+                self.on_start_callback(tool_name, input_str)
+            except Exception as e:
+                # Don't let user callback errors break the workflow
+                logging.error(f"Error in on_tool_start callback: {e}")
+    
+    def on_tool_end(self, output: str, **kwargs) -> None:
+        print(f"DEBUG: on_tool_end se ejecutó!")
+        tool_name = self.current_tool_name or "unknown"
+        
+        # Convert output to string if it's a ToolMessage or other object
+        if hasattr(output, 'content'):
+            output_str = output.content
+        elif isinstance(output, str):
+            output_str = output
+        else:
+            output_str = str(output)
+        
+        # Update internal tracking
+        if self.tool_executions:
+            self.tool_executions[-1]["status"] = "success"
+            self.tool_executions[-1]["output"] = output_str
+        
+        # Call user's callback if provided
+        if self.on_end_callback:
+            try:
+                self.on_end_callback(tool_name, output_str)
+            except Exception as e:
+                logging.error(f"Error in on_tool_end callback: {e}")
+        
+        self.current_tool_name = None
+
+    def on_tool_error(self, error: Exception, **kwargs) -> None:  # ← CORRECTO
+        print(f"DEBUG: on_tool_error se ejecutó!")
+        tool_name = self.current_tool_name or "unknown"
+        error_message = str(error)
+        
+        # Update internal tracking
+        if self.tool_executions:
+            self.tool_executions[-1]["status"] = "error"
+            self.tool_executions[-1]["error"] = error_message
+        
+        # Call user's callback if provided
+        if self.on_error_callback:
+            try:
+                self.on_error_callback(tool_name, error_message)
+            except Exception as e:
+                logging.error(f"Error in on_tool_error callback: {e}")
+        
+        self.current_tool_name = None
 
 class LangChainBot:
     """
@@ -39,6 +135,7 @@ class LangChainBot:
         - File processing with vector search
         - Thread-based conversation persistence
         - Streaming responses
+        - Tool execution callbacks for real-time monitoring
         - Backward compatibility with legacy APIs
     """
 
@@ -49,9 +146,12 @@ class LangChainBot:
                  tools: Optional[List[BaseTool]] = None,
                  mcp_servers: Optional[Dict[str, Any]] = None,
                  use_checkpointer: bool = False,
-                 logger: Optional[logging.Logger] = None):
+                 logger: Optional[logging.Logger] = None,
+                 on_tool_start: Optional[Callable[[str, str], None]] = None,
+                 on_tool_end: Optional[Callable[[str, str], None]] = None,
+                 on_tool_error: Optional[Callable[[str, str], None]] = None):
         """
-        Initialize the modern LangGraph bot with optional MCP support.
+        Initialize the modern LangGraph bot with optional MCP support and tool execution callbacks.
 
         Args:
             language_model (ILanguageModel): The language model to use for generation
@@ -61,10 +161,29 @@ class LangChainBot:
             mcp_servers (Dict[str, Any], optional): MCP server configurations for dynamic tool loading
             use_checkpointer (bool): Enable automatic conversation persistence using LangGraph checkpoints
             logger (Optional[logging.Logger]): Logger instance for error tracking (silent by default if not provided)
+            on_tool_start (Callable[[str, str], None], optional): Callback function executed when a tool starts.
+                Receives (tool_name: str, input_data: str)
+            on_tool_end (Callable[[str, str], None], optional): Callback function executed when a tool completes successfully.
+                Receives (tool_name: str, output: str)
+            on_tool_error (Callable[[str, str], None], optional): Callback function executed when a tool fails.
+                Receives (tool_name: str, error_message: str)
         
         Note:
             The instructions will be automatically enhanced with tool descriptions
             when tools are provided, eliminating the need for manual tool instruction formatting.
+            
+        Example:
+```python
+            def on_tool_execution(tool_name: str, input_data: str):
+                print(f"Tool {tool_name} started with input: {input_data}")
+                
+            bot = LangChainBot(
+                language_model=model,
+                embeddings=embeddings,
+                instructions="You are a helpful assistant",
+                on_tool_start=on_tool_execution
+            )
+```
         """
         # Configure logger (silent by default if not provided)
         self.logger = logger or logging.getLogger(__name__)
@@ -83,6 +202,11 @@ class LangChainBot:
         # Tool configuration
         self.tools = tools or []
         self.mcp_client = None
+        
+        # Tool execution callbacks
+        self.on_tool_start = on_tool_start
+        self.on_tool_end = on_tool_end
+        self.on_tool_error = on_tool_error
         
         # Initialize MCP servers if provided
         if mcp_servers:
@@ -350,6 +474,7 @@ class LangChainBot:
         
         This method provides the primary interface for single-turn conversations,
         maintaining backward compatibility with existing ChatService implementations.
+        Tool execution callbacks (if provided) will be triggered during execution.
         
         Args:
             user_input (str): The user's message or query
@@ -370,9 +495,18 @@ class LangChainBot:
             "context": ""
         }
         
-        # Execute the LangGraph workflow
-        # Siempre usar ainvoke (funciona para ambos casos)
-        result = asyncio.run(self.graph.ainvoke(initial_state))
+        # Create callback handler if any callbacks are provided
+        config = {}
+        if self.on_tool_start or self.on_tool_end or self.on_tool_error:
+            tool_logger = _InternalToolLogger(
+                on_start=self.on_tool_start,
+                on_end=self.on_tool_end,
+                on_error=self.on_tool_error
+            )
+            config["callbacks"] = [tool_logger]
+        
+        # Execute the LangGraph workflow with callbacks
+        result = asyncio.run(self.graph.ainvoke(initial_state, config=config))
         
         # Update internal conversation history
         self.chat_history = result["messages"]
@@ -405,7 +539,8 @@ class LangChainBot:
         Generate a streaming response for real-time user interaction.
         
         This method provides streaming capabilities while maintaining backward
-        compatibility with the original API.
+        compatibility with the original API. Tool execution callbacks (if provided)
+        will be triggered during execution.
         
         Args:
             user_input (str): The user's message or query
@@ -422,10 +557,20 @@ class LangChainBot:
             "context": ""
         }
         
+        # Create callback handler if any callbacks are provided
+        config = {}
+        if self.on_tool_start or self.on_tool_end or self.on_tool_error:
+            tool_logger = _InternalToolLogger(
+                on_start=self.on_tool_start,
+                on_end=self.on_tool_end,
+                on_error=self.on_tool_error
+            )
+            config["callbacks"] = [tool_logger]
+        
         accumulated_response = ""
         
-        # Stream workflow execution
-        for chunk in self.graph.stream(initial_state):
+        # Stream workflow execution with callbacks
+        for chunk in self.graph.stream(initial_state, config=config):
             # Extract content from workflow chunks
             if "agent" in chunk:
                 for message in chunk["agent"]["messages"]:
@@ -539,40 +684,6 @@ class LangChainBot:
         Returns:
             str: Concatenated relevant context from processed files
         """
-        if self.vector_store:
-            docs = self.vector_store.similarity_search(query, k=4)
-            return "\n".join([doc.page_content for doc in docs])
-        return ""
-    
-    def process_file(self, file: FileProcessorInterface):
-        """API original - Procesa archivo y lo añade al vector store"""
-        document = file.getText()
-        text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-        texts = text_splitter.split_documents(document)
-
-        if self.vector_store is None:
-            self.vector_store = FAISS.from_texts(
-                [doc.page_content for doc in texts], 
-                self.embeddings
-            )
-        else:
-            self.vector_store.add_texts([doc.page_content for doc in texts])
-
-    def clear_memory(self):
-        """API original - Limpia la memoria de conversación"""
-        self.chat_history.clear()
-        self.vector_store = None
-
-    def get_chat_history(self) -> List[BaseMessage]:
-        """API original - Obtiene el historial completo"""
-        return self.chat_history.copy()
-
-    def set_chat_history(self, history: List[BaseMessage]):
-        """API original - Establece el historial de conversación"""
-        self.chat_history = history.copy()
-
-    def _get_context(self, query: str) -> str:
-        """Obtiene contexto relevante de archivos procesados"""
         if self.vector_store:
             docs = self.vector_store.similarity_search(query, k=4)
             return "\n".join([doc.page_content for doc in docs])
