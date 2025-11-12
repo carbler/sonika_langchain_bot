@@ -29,6 +29,22 @@ def on_tool_error(tool_name: str, error: str):
     print(f"❌ Tool falló: {tool_name}")
     print(f"   Error: {error}")
 
+# Callbacks
+def on_reasoning_start(user_msg: str):
+    print(f"\n🧠 RAZONAMIENTO INICIADO")
+    print(f"Mensaje: {user_msg}")
+
+def on_reasoning_end(plan: dict):
+    print(f"\n📊 PLAN DE RAZONAMIENTO:")
+    print(f"  - Decisión: {plan['decision']}")
+    print(f"  - Confianza: {plan['confidence_level']}")
+    print(f"  - Razonamiento:")
+    for step in plan['reasoning_chain']:
+        print(f"    • {step}")
+    if plan.get('selected_tool'):
+        print(f"  - Tool: {plan['selected_tool']}")
+        print(f"  - Args: {plan['tool_arguments']}")
+
 
 def bot_bdi():
     # Obtener claves de API desde el archivo .env
@@ -42,7 +58,10 @@ def bot_bdi():
         language_model, 
         embeddings,  
         instructions="Eres un agente" ,
-        tools=tools, 
+        tools=tools,
+        use_reasoning=False, 
+        on_reasoning_start=on_reasoning_start,
+        on_reasoning_end=on_reasoning_end,
         on_tool_start=on_tool_start,
         on_tool_end=on_tool_end,
         on_tool_error=on_tool_error)
