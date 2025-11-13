@@ -204,8 +204,7 @@ class ReasoningNode:
                  tools: List[BaseTool],
                  max_retries: int = 2,
                  logger: Optional[logging.Logger] = None,
-                 on_reasoning_start: Optional[Callable[[str], None]] = None,
-                 on_reasoning_end: Optional[Callable[[Dict[str, Any]], None]] = None):
+                 on_reasoning_update: Optional[Callable[[Dict[str, Any]], None]] = None):
         """
         Initialize the reasoning node.
         
@@ -215,16 +214,14 @@ class ReasoningNode:
             tools: Available tools that can be used
             max_retries: Maximum number of retries for generating valid plans
             logger: Optional logger instance
-            on_reasoning_start: Callback called when reasoning starts with user message
-            on_reasoning_end: Callback called when reasoning completes with full plan
+            on_reasoning_update: Callback called when reasoning completes with the full plan
         """
         self.model = model
         self.instructions = instructions
         self.tools = tools
         self.max_retries = max_retries
         self.logger = logger or logging.getLogger(__name__)
-        self.on_reasoning_start = on_reasoning_start
-        self.on_reasoning_end = on_reasoning_end
+        self.on_reasoning_update = on_reasoning_update
         
         # Build tool descriptions for reasoning
         self.tool_descriptions = self._build_tool_descriptions()
@@ -267,13 +264,6 @@ class ReasoningNode:
         if not last_user_message:
             return state
         
-        # Trigger reasoning start callback
-        if self.on_reasoning_start:
-            try:
-                self.on_reasoning_start(last_user_message)
-            except Exception as e:
-                self.logger.error(f"Error in on_reasoning_start callback: {e}")
-        
         # Initialize token tracking for this reasoning session
         accumulated_tokens = TokenUsage()
         
@@ -303,11 +293,11 @@ class ReasoningNode:
                 
                 # Plan is valid - trigger callback
                 plan_dict = plan.dict()
-                if self.on_reasoning_end:
+                if self.on_reasoning_update:
                     try:
-                        self.on_reasoning_end(plan_dict)
+                        self.on_reasoning_update(plan_dict)
                     except Exception as e:
-                        self.logger.error(f"Error in on_reasoning_end callback: {e}")
+                        self.logger.error(f"Error in on_reasoning_update callback: {e}")
                 
                 # Update state token usage
                 current_tokens = state.get("token_usage", {})
@@ -333,11 +323,11 @@ class ReasoningNode:
                         "response_to_user": "I apologize, but I'm having trouble processing your request. Could you try rephrasing it?"
                     }
                     
-                    if self.on_reasoning_end:
+                    if self.on_reasoning_update:
                         try:
-                            self.on_reasoning_end(fallback_plan)
+                            self.on_reasoning_update(fallback_plan)
                         except Exception as e:
-                            self.logger.error(f"Error in on_reasoning_end callback: {e}")
+                            self.logger.error(f"Error in on_reasoning_update callback: {e}")
                     
                     # Update tokens even on failure
                     current_tokens = state.get("token_usage", {})
@@ -435,9 +425,9 @@ Respond ONLY with valid JSON. No additional text."""
         
         # Clean markdown formatting
         if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
+            content = content.split("```json")[1].split("```").strip()
         elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
+            content = content.split("```").split("```")[0].strip()
         
         # Parse JSON and validate with Pydantic
         plan_dict = json.loads(content)
@@ -461,10 +451,17 @@ Respond ONLY with valid JSON. No additional text."""
                 return False, "Decision is execute_tool but no tool selected"
             if not plan.tool_arguments:
                 return False, "Decision is execute_tool but no tool arguments provided"
+            
+            # Normalize tool name: remove prefix if present (e.g., "functions.tool_name" -> "tool_name")
+            tool_name = plan.selected_tool.split('.')[-1] if '.' in plan.selected_tool else plan.selected_tool
+            
             # Verify tool exists
             tool_names = [t.name for t in self.tools]
-            if plan.selected_tool not in tool_names:
-                return False, f"Selected tool '{plan.selected_tool}' not in available tools"
+            if tool_name not in tool_names:
+                return False, f"Selected tool '{tool_name}' not in available tools: {tool_names}"
+            
+            # Update plan with normalized name
+            plan.selected_tool = tool_name
         
         elif plan.decision in ["respond_directly", "request_clarification"]:
             if not plan.response_to_user:
@@ -599,8 +596,7 @@ class LangChainBot:
                  on_tool_start: Optional[Callable[[str, str], None]] = None,
                  on_tool_end: Optional[Callable[[str, str], None]] = None,
                  on_tool_error: Optional[Callable[[str, str], None]] = None,
-                 on_reasoning_start: Optional[Callable[[str], None]] = None,
-                 on_reasoning_end: Optional[Callable[[Dict[str, Any]], None]] = None):
+                 on_reasoning_update: Optional[Callable[[Dict[str, Any]], None]] = None):
         """
         Initialize the modern LangGraph bot with optional MCP support, reasoning, and callbacks.
 
@@ -620,10 +616,8 @@ class LangChainBot:
                 Receives (tool_name: str, output: str)
             on_tool_error (Callable[[str, str], None], optional): Callback when a tool fails.
                 Receives (tool_name: str, error_message: str)
-            on_reasoning_start (Callable[[str], None], optional): Callback when reasoning starts.
-                Receives (user_message: str)
-            on_reasoning_end (Callable[[Dict[str, Any]], None], optional): Callback when reasoning completes.
-                Receives (reasoning_plan: Dict) containing full reasoning details
+            on_reasoning_update (Callable[[Dict[str, Any]], None], optional): Callback that receives the complete
+                reasoning plan as soon as it's generated. Receives a dictionary with the full reasoning details.
         
         Note:
             When use_reasoning=True, the bot will analyze requests before acting, providing:
@@ -634,7 +628,6 @@ class LangChainBot:
             - Complete token tracking across all reasoning steps
             
         Example:
-```python
             def on_reasoning(plan: Dict):
                 print(f"Decision: {plan['decision']}")
                 print(f"Reasoning: {plan['reasoning_chain']}")
@@ -644,9 +637,8 @@ class LangChainBot:
                 embeddings=embeddings,
                 instructions="You are a helpful assistant...",
                 use_reasoning=True,
-                on_reasoning_end=on_reasoning
+                on_reasoning_update=on_reasoning
             )
-```
         """
         # Configure logger (silent by default if not provided)
         self.logger = logger or logging.getLogger(__name__)
@@ -674,8 +666,7 @@ class LangChainBot:
         self.on_tool_error = on_tool_error
         
         # Reasoning callbacks
-        self.on_reasoning_start = on_reasoning_start
-        self.on_reasoning_end = on_reasoning_end
+        self.on_reasoning_update = on_reasoning_update
         
         # Initialize MCP servers if provided
         if mcp_servers:
@@ -786,7 +777,7 @@ class LangChainBot:
             return self._create_reasoning_workflow()
         else:
             return self._create_standard_workflow()
-    
+
     def _create_standard_workflow(self) -> StateGraph:
         """Create standard workflow without reasoning layer."""
         
@@ -880,7 +871,7 @@ class LangChainBot:
             return workflow.compile(checkpointer=self.checkpointer)
         else:
             return workflow.compile()
-    
+
     def _create_reasoning_workflow(self) -> StateGraph:
         """
         Create workflow with reasoning layer.
@@ -895,8 +886,7 @@ class LangChainBot:
             tools=self.tools,
             max_retries=self.reasoning_max_retries,
             logger=self.logger,
-            on_reasoning_start=self.on_reasoning_start,
-            on_reasoning_end=self.on_reasoning_end
+            on_reasoning_update=self.on_reasoning_update
         )
         
         execution_node = ExecutionNode(logger=self.logger)
@@ -999,7 +989,7 @@ class LangChainBot:
             return workflow.compile()
 
     # ===== PUBLIC API METHODS =====
-    
+
     def get_response(self, user_input: str) -> ResponseModel:
         """
         Generate a response while maintaining 100% API compatibility.
@@ -1051,7 +1041,7 @@ class LangChainBot:
             bot_tokens=token_usage.get("completion_tokens", 0),
             response=final_response
         )
-    
+
     def get_response_stream(self, user_input: str) -> Generator[str, None, None]:
         """
         Generate a streaming response for real-time user interaction.
@@ -1142,7 +1132,7 @@ class LangChainBot:
             docs = self.vector_store.similarity_search(query, k=4)
             return "\n".join([doc.page_content for doc in docs])
         return ""
-    
+
     def get_last_reasoning_plan(self) -> Optional[Dict[str, Any]]:
         """
         Retrieve the last reasoning plan for debugging or monitoring.
