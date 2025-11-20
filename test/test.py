@@ -14,6 +14,7 @@ from sonika_langchain_bot.langchain_clasificator import  TextClassifier
 from sonika_langchain_bot.langchain_class import Message, ResponseModel
 from sonika_langchain_bot.langchain_models import OpenAILanguageModel
 from pydantic import BaseModel, Field
+import json
 
 
 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
@@ -70,8 +71,7 @@ def bot_bdi():
     # Obtener la respuesta del bot
     response_model: ResponseModel = bot.get_response(user_message)
     bot_response = response_model
-
-    print("Bot response",bot_response)
+    print("Bot response", json.dumps(bot_response, indent=2, ensure_ascii=False))
 
 def bot_mutinodo():
     # Obtener claves de API desde el archivo .env
@@ -196,6 +196,7 @@ def clasification():
     result = classifier.classify("how are you?")
     print(result)
 
-bot_mutinodo()
+bot_bdi()
+#bot_mutinodo()
 #bot_bdi_streaming()
 #clasification()

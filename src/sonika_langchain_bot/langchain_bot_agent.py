@@ -12,6 +12,7 @@ from langgraph.graph import StateGraph, END, add_messages
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_community.callbacks.manager import get_openai_callback
 
 # Import your existing interfaces
 from sonika_langchain_bot.langchain_class import (
@@ -421,16 +422,24 @@ If the user provides contact information (name, email, phone):
         }
         
         config = {}
-        tool_logger = None
-        if self.on_tool_start or self.on_tool_end or self.on_tool_error:
-            tool_logger = _InternalToolLogger(
-                on_start=self.on_tool_start,
-                on_end=self.on_tool_end,
-                on_error=self.on_tool_error
-            )
-            config["callbacks"] = [tool_logger]
+        # Siempre crear el tool_logger para rastrear ejecuciones
+        tool_logger = _InternalToolLogger(
+            on_start=self.on_tool_start,
+            on_end=self.on_tool_end,
+            on_error=self.on_tool_error
+        )
+        config["callbacks"] = [tool_logger]
         
-        result = asyncio.run(self.graph.ainvoke(initial_state, config=config))
+        # Usar get_openai_callback para trackear tokens
+        with get_openai_callback() as cb:
+            result = asyncio.run(self.graph.ainvoke(initial_state, config=config))
+            
+            # Actualizar token_usage con los datos del callback
+            result["token_usage"] = {
+                "prompt_tokens": cb.prompt_tokens,
+                "completion_tokens": cb.completion_tokens,
+                "total_tokens": cb.total_tokens
+            }
         
         self.chat_history = result["messages"]
         
@@ -441,15 +450,13 @@ If the user provides contact information (name, email, phone):
                 final_response = msg.content
                 break
         
-        # Get accumulated token usage from state
-        token_usage = result.get("token_usage", {})
+        # Get accumulated token usage from callback
+        token_usage = result["token_usage"]
         
         # Get tools executed from callback handler
-        tools_executed = []
-        if tool_logger:
-            tools_executed = tool_logger.tool_executions
+        tools_executed = tool_logger.tool_executions
         
-        # Generate logs (basic implementation - can be enhanced)
+        # Generate logs
         logs = []
         for i, msg in enumerate(result["messages"]):
             if isinstance(msg, HumanMessage):
@@ -486,13 +493,12 @@ If the user provides contact information (name, email, phone):
         }
         
         config = {}
-        if self.on_tool_start or self.on_tool_end or self.on_tool_error:
-            tool_logger = _InternalToolLogger(
-                on_start=self.on_tool_start,
-                on_end=self.on_tool_end,
-                on_error=self.on_tool_error
-            )
-            config["callbacks"] = [tool_logger]
+        tool_logger = _InternalToolLogger(
+            on_start=self.on_tool_start,
+            on_end=self.on_tool_end,
+            on_error=self.on_tool_error
+        )
+        config["callbacks"] = [tool_logger]
         
         accumulated_response = ""
         

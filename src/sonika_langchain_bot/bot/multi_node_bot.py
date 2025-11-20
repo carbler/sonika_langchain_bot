@@ -13,7 +13,7 @@ from sonika_langchain_bot.bot.nodes.react_agent_node import ReActAgentNode
 from sonika_langchain_bot.bot.nodes.executor_node import ExecutorNode
 from sonika_langchain_bot.bot.nodes.output_node import OutputNode
 from sonika_langchain_bot.bot.nodes.logger_node import LoggerNode
-from langchain.callbacks import get_openai_callback
+from langchain_community.callbacks.manager import get_openai_callback
 
 
 class MultiNodeBot:
