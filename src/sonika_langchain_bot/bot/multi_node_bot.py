@@ -26,6 +26,7 @@ class MultiNodeBot:
         function_purpose: str,
         personality_tone: str,
         limitations: str,
+        dynamic_info: str,
         tools: Optional[List[BaseTool]] = None,
         mcp_servers: Optional[Dict[str, Any]] = None,
         max_messages: int = 100,
@@ -48,6 +49,7 @@ class MultiNodeBot:
         self.function_purpose = function_purpose
         self.personality_tone = personality_tone
         self.limitations = limitations
+        self.dynamic_info = dynamic_info
         self.tools = tools or []
 
         if mcp_servers:
@@ -152,7 +154,6 @@ class MultiNodeBot:
         user_input: str,
         messages: List[BaseMessage],
         logs: List[str],
-        dynamic_info: str
     ) -> Dict[str, Any]:
         
         limited_messages = self._limit_messages(messages)
@@ -162,7 +163,7 @@ class MultiNodeBot:
             "user_input": user_input,
             "messages": limited_messages,
             "logs": limited_logs,
-            "dynamic_info": dynamic_info,
+            "dynamic_info": self.dynamic_info,
             "function_purpose": self.function_purpose,
             "personality_tone": self.personality_tone,
             "limitations": self.limitations,

@@ -162,7 +162,7 @@ class ReActAgentNode(BaseNode):
     ## CRITICAL RULES:
     1. **Use the current date/time from context for any date-related operations**
     2. **Follow ALL conditional rules above** - they are MANDATORY
-    3. If you ALREADY executed a tool successfully → DO NOT call more tools, just say "I have the results from [tool_name]"
+    3. You may execute multiple different tools, but NEVER the same tool twice.
     4. If you need info → call the appropriate tool
     5. NEVER execute the same tool twice
     6. **NEVER EVER generate conversational responses to the user**
@@ -213,6 +213,8 @@ Analyze the situation and decide:
 - Do you have enough information? If yes, explain your reasoning.
 
 Now analyze and decide.""")
+        
+        print(analysis_parts)
         
         return "\n\n".join(analysis_parts)
     
@@ -268,18 +270,28 @@ Now analyze and decide.""")
             decision["decision"] = "finish"
         
         return decision
-    
+        
     def _get_tools_history(self, state: Dict[str, Any]) -> str:
-        """Get summary of tools already executed."""
+        """Get summary of ALL tools executed in the session."""
+        # ✅ Leer de tools_executed directamente (que se acumula automáticamente)
         tools_executed = state.get('tools_executed', [])
+        
         if not tools_executed:
             return ""
         
         history = []
+        seen_tools = set()
+        
         for tool in tools_executed:
             tool_name = tool.get('tool_name', 'unknown')
             status = tool.get('status', 'unknown')
+            
+            # Registrar para evitar duplicados en el mensaje
+            if tool_name in seen_tools:
+                continue
+            
             history.append(f"- {tool_name}: {status}")
+            seen_tools.add(tool_name)
         
         return "\n".join(history)
     

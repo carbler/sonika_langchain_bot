@@ -139,6 +139,9 @@ Example:
 ✓ User says "save contact Juan (juan@email.com)" → OK to save
 ✗ User says "who is Juan?" → Do NOT look up Juan's private data and share it
 """
+
+    dynamic_info = 'Te llamas arnulfo y hoy es 14-nov-2025'
+
     
     # 4. Inicializar bot
     bot = MultiNodeBot(
@@ -147,6 +150,7 @@ Example:
         function_purpose=function_purpose,
         personality_tone="Responde amablemente",
         limitations=limitations,
+        dynamic_info=dynamic_info,
         tools=tools,
         on_planner_update=on_reasoning_update,
         on_logs_generated=on_logs_generated,
@@ -156,12 +160,11 @@ Example:
         )
 
     user_message = 'Envia un email con la tool a erley@gmail.com con el asunto Hola y el mensaje Hola Erley. Y almacena a erley como contacto. El numero de cel es 3183890492'
-    dynamic_info = 'Te llamas arnulfo y hoy es 14-nov-2025'
 
     conversation = [Message(content="Mi nombre es Erley", is_bot=False)]
 
     # Obtener la respuesta del bot
-    response_model: ResponseModel = bot.get_response(user_input=user_message,messages=conversation,dynamic_info=dynamic_info, logs = [])
+    response_model: ResponseModel = bot.get_response(user_input=user_message,messages=conversation,logs = [])
     bot_response = response_model
 
     print("Bot response",bot_response)
@@ -207,7 +210,7 @@ def clasification():
     result = classifier.classify("how are you?")
     print(result)
 
-bot_bdi()
-#bot_mutinodo()
+#bot_bdi()
+bot_mutinodo()
 #bot_bdi_streaming()
 #clasification()

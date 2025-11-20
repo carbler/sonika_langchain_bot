@@ -21,6 +21,7 @@ from sonika_langchain_bot.langchain_class import (
     ILanguageModel, 
     Message, 
 )
+
 # ============= TOKEN USAGE MODEL =============
 
 class TokenUsage(BaseModel):
@@ -45,10 +46,12 @@ class ChatState(TypedDict):
     Attributes:
         messages: List of conversation messages with automatic message handling
         context: Contextual information from processed files
+        logs: Historical logs for context
         token_usage: Accumulated token usage across all model invocations
     """
     messages: Annotated[List[BaseMessage], add_messages]
     context: str
+    logs: List[str]
     token_usage: Dict[str, int]
 
 
@@ -194,6 +197,8 @@ class LangChainBot:
                  tools: Optional[List[BaseTool]] = None,
                  mcp_servers: Optional[Dict[str, Any]] = None,
                  use_checkpointer: bool = False,
+                 max_messages: int = 100,
+                 max_logs: int = 20,
                  logger: Optional[logging.Logger] = None,
                  on_tool_start: Optional[Callable[[str, str], None]] = None,
                  on_tool_end: Optional[Callable[[str, str], None]] = None,
@@ -208,6 +213,8 @@ class LangChainBot:
             tools (List[BaseTool], optional): Traditional LangChain tools to bind to the model
             mcp_servers (Dict[str, Any], optional): MCP server configurations for dynamic tool loading
             use_checkpointer (bool): Enable automatic conversation persistence using LangGraph checkpoints
+            max_messages (int): Maximum number of messages to keep in history
+            max_logs (int): Maximum number of logs to keep in history
             logger (Optional[logging.Logger]): Logger instance for error tracking (silent by default if not provided)
             on_tool_start (Callable[[str, str], None], optional): Callback when a tool starts.
                 Receives (tool_name: str, input_data: str)
@@ -225,6 +232,10 @@ class LangChainBot:
         self.language_model = language_model
         self.embeddings = embeddings
         self.instructions = instructions
+        
+        # Limits
+        self.max_messages = max_messages
+        self.max_logs = max_logs
         
         # Backward compatibility attributes
         self.chat_history: List[BaseMessage] = []
@@ -353,6 +364,11 @@ If the user provides contact information (name, email, phone):
             if context:
                 system_content += f"\n\nContext from uploaded files:\n{context}"
             
+            # Add logs context if available
+            if state.get("logs"):
+                logs_context = "\n".join(state["logs"][-self.max_logs:])
+                system_content += f"\n\nRecent logs:\n{logs_context}"
+            
             messages = [{"role": "system", "content": system_content}]
             
             for msg in state["messages"]:
@@ -427,9 +443,44 @@ If the user provides contact information (name, email, phone):
         else:
             return workflow.compile()
 
+    def _limit_messages(self, messages: List[BaseMessage]) -> List[BaseMessage]:
+        """Limit historical messages."""
+        if len(messages) <= self.max_messages:
+            return messages
+        return messages[-self.max_messages:]
+    
+    def _limit_logs(self, logs: List[str]) -> List[str]:
+        """Limit historical logs."""
+        if len(logs) <= self.max_logs:
+            return logs
+        return logs[-self.max_logs:]
+    
+    def _convert_message_to_base_message(self, messages: List[Message]) -> List[BaseMessage]:
+        """
+        Convert Message objects to BaseMessage objects.
+        
+        Args:
+            messages: List of Message objects
+            
+        Returns:
+            List of BaseMessage objects (HumanMessage or AIMessage)
+        """
+        base_messages = []
+        for msg in messages:
+            if msg.is_bot:
+                base_messages.append(AIMessage(content=msg.content))
+            else:
+                base_messages.append(HumanMessage(content=msg.content))
+        return base_messages
+
     # ===== PUBLIC API METHODS =====
 
-    def get_response(self, user_input: str) -> dict:
+    def get_response(
+        self,
+        user_input: str,
+        messages: List[Message],
+        logs: List[str]
+    ) -> Dict[str, Any]:
         """
         Generate a response with logs and tool execution tracking.
         
@@ -439,10 +490,19 @@ If the user provides contact information (name, email, phone):
         
         Args:
             user_input (str): The user's message or query
+            messages (List[Message]): Historical conversation messages (Message class)
+            logs (List[str]): Historical logs for context
             
         Returns:
             dict: Structured response with content, logs, tools_executed, and token_usage
         """
+        # Convert Message to BaseMessage
+        base_messages = self._convert_message_to_base_message(messages)
+        
+        # Limit messages and logs
+        limited_messages = self._limit_messages(base_messages)
+        limited_logs = self._limit_logs(logs)
+        
         # Crear el tool_logger para rastrear todo
         tool_logger = _InternalToolLogger(
             on_start=self.on_tool_start,
@@ -454,8 +514,9 @@ If the user provides contact information (name, email, phone):
         tool_logger.execution_logs.append(f"[USER] {user_input}")
         
         initial_state = {
-            "messages": self.chat_history + [HumanMessage(content=user_input)],
+            "messages": limited_messages + [HumanMessage(content=user_input)],
             "context": "",
+            "logs": limited_logs,
             "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         }
         
@@ -472,8 +533,6 @@ If the user provides contact information (name, email, phone):
                 "total_tokens": cb.total_tokens
             }
         
-        self.chat_history = result["messages"]
-        
         # Extract final response
         final_response = ""
         for msg in reversed(result["messages"]):
@@ -485,9 +544,12 @@ If the user provides contact information (name, email, phone):
         if final_response:
             tool_logger.execution_logs.append(f"[BOT] {final_response}")
         
+        # Combine old logs with new logs
+        new_logs = limited_logs + tool_logger.execution_logs
+        
         return {
             "content": final_response,
-            "logs": tool_logger.execution_logs,
+            "logs": new_logs,
             "tools_executed": tool_logger.tool_executions,
             "token_usage": result["token_usage"]
         }
@@ -505,6 +567,7 @@ If the user provides contact information (name, email, phone):
         initial_state = {
             "messages": self.chat_history + [HumanMessage(content=user_input)],
             "context": "",
+            "logs": [],
             "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         }
         
@@ -533,12 +596,7 @@ If the user provides contact information (name, email, phone):
 
     def load_conversation_history(self, messages: List[Message]):
         """Load conversation history from Django model instances."""
-        self.chat_history.clear()
-        for message in messages:
-            if message.is_bot:
-                self.chat_history.append(AIMessage(content=message.content))
-            else:
-                self.chat_history.append(HumanMessage(content=message.content))
+        self.chat_history = self._convert_message_to_base_message(messages)
 
     def save_messages(self, user_message: str, bot_response: str):
         """Save messages to internal conversation history."""

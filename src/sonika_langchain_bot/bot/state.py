@@ -1,7 +1,8 @@
 """Estado compartido para el workflow multi-nodo de LangGraph."""
 
-from typing import TypedDict, List, Dict, Any, Optional
+from typing import TypedDict, List, Dict, Any, Optional, Annotated
 from langchain.schema import BaseMessage
+from operator import add
 
 
 # Modificar ChatState - agregar campos nuevos
@@ -12,7 +13,7 @@ class ChatState(TypedDict):
     # ENTRADA
     user_input: str
     messages: List[BaseMessage]
-    logs: List[str]
+    logs: Annotated[List[str], add]  # ✅ También debería acumularse
     dynamic_info: str
     
     # INSTRUCCIONES
@@ -35,5 +36,5 @@ class ChatState(TypedDict):
     react_iteration: int
     
     # TRACKING
-    tools_executed: List[Dict[str, Any]]
+    tools_executed: Annotated[List[Dict[str, Any]], add]  # ✅ CAMBIO CRÍTICO
     token_usage: Dict[str, int]
