@@ -31,4 +31,5 @@ class LoggerNode(BaseNode):
             except Exception as e:
                 self.logger.warning(f"Callback failed: {e}")
         
-        return {**state, "logger_output": new_logs}
+        # ✅ SOLO retornar lo que actualizas, NO todo el state
+        return {"logger_output": new_logs}

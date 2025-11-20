@@ -213,9 +213,7 @@ Analyze the situation and decide:
 - Do you have enough information? If yes, explain your reasoning.
 
 Now analyze and decide.""")
-        
-        print(analysis_parts)
-        
+                
         return "\n\n".join(analysis_parts)
     
     def _generate_reasoning(self, state: Dict[str, Any], observation: Optional[str], iteration: int) -> AIMessage:
