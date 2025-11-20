@@ -19,7 +19,6 @@ from sonika_langchain_bot.langchain_class import (
     IEmbeddings, 
     ILanguageModel, 
     Message, 
-    ResponseModel
 )
 
 
@@ -89,8 +88,8 @@ class _InternalToolLogger(BaseCallbackHandler):
         self.current_tool_name = tool_name
         
         self.tool_executions.append({
-            "tool": tool_name,
-            "input": input_str,
+            "tool_name": tool_name,
+            "args": input_str,
             "status": "started"
         })
         
@@ -198,7 +197,7 @@ class LangChainBot:
         # Core components
         self.language_model = language_model
         self.embeddings = embeddings
-        self.base_instructions = instructions
+        self.instructions = instructions
         
         # Backward compatibility attributes
         self.chat_history: List[BaseMessage] = []
@@ -221,10 +220,7 @@ class LangChainBot:
         self.checkpointer = MemorySaver() if use_checkpointer else None
         
         # Prepare model with bound tools for native function calling
-        self.model_with_tools = self._prepare_model_with_tools()
-        
-        # Build modern instruction set with tool descriptions
-        self.instructions = self._build_modern_instructions()
+        self.model_with_tools = self.language_model.model.bind_tools(self.tools) if self.tools else self.language_model.model
         
         # Create the LangGraph workflow
         self.graph = self._create_workflow()
@@ -244,61 +240,6 @@ class LangChainBot:
             self.logger.error(f"Error inicializando MCP: {e}")
             self.logger.exception("Traceback completo:")
             self.mcp_client = None
-
-    def _prepare_model_with_tools(self):
-        """Prepare the language model with bound tools for native function calling."""
-        if self.tools:
-            return self.language_model.model.bind_tools(self.tools)
-        return self.language_model.model
-
-    def _build_modern_instructions(self) -> str:
-        """Build enhanced instructions with tool descriptions."""
-        instructions = self.base_instructions
-        
-        if self.tools:
-            tools_description = "\n\n# Available Tools\n\n"
-            
-            for tool in self.tools:
-                tools_description += f"## {tool.name}\n"
-                tools_description += f"**Description:** {tool.description}\n\n"
-                
-                # Handle different tool schema formats
-                if hasattr(tool, 'args_schema') and tool.args_schema and hasattr(tool.args_schema, '__fields__'):
-                    tools_description += f"**Parameters:**\n"
-                    for field_name, field_info in tool.args_schema.__fields__.items():
-                        required = "**REQUIRED**" if field_info.is_required() else "*optional*"
-                        tools_description += f"- `{field_name}` ({field_info.annotation.__name__}, {required}): {field_info.description}\n"
-                
-                elif hasattr(tool, 'args_schema') and isinstance(tool.args_schema, dict):
-                    if 'properties' in tool.args_schema:
-                        tools_description += f"**Parameters:**\n"
-                        for param_name, param_info in tool.args_schema['properties'].items():
-                            required = "**REQUIRED**" if param_name in tool.args_schema.get('required', []) else "*optional*"
-                            param_desc = param_info.get('description', 'No description')
-                            param_type = param_info.get('type', 'any')
-                            tools_description += f"- `{param_name}` ({param_type}, {required}): {param_desc}\n"
-                
-                elif hasattr(tool, '_run'):
-                    tools_description += f"**Parameters:**\n"
-                    import inspect
-                    sig = inspect.signature(tool._run)
-                    for param_name, param in sig.parameters.items():
-                        if param_name != 'self':
-                            param_type = param.annotation.__name__ if param.annotation != inspect.Parameter.empty else 'any'
-                            required = "*optional*" if param.default != inspect.Parameter.empty else "**REQUIRED**"
-                            default_info = f" (default: {param.default})" if param.default != inspect.Parameter.empty else ""
-                            tools_description += f"- `{param_name}` ({param_type}, {required}){default_info}\n"
-                            
-                tools_description += "\n"
-            
-            tools_description += ("## Usage Instructions\n"
-                                "- Use the standard function calling format\n"
-                                "- **MUST** provide all REQUIRED parameters\n"
-                                "- Do NOT call tools with empty arguments\n")
-            
-            instructions += tools_description
-        
-        return instructions
 
     def _extract_token_usage_from_message(self, message: BaseMessage) -> TokenUsage:
         """Extract token usage from a message's metadata."""
@@ -412,9 +353,9 @@ class LangChainBot:
 
     # ===== PUBLIC API METHODS =====
 
-    def get_response(self, user_input: str) -> ResponseModel:
+    def get_response(self, user_input: str) -> dict:
         """
-        Generate a response while maintaining 100% API compatibility.
+        Generate a response with logs and tool execution tracking.
         
         This method tracks ALL token usage across the entire workflow including:
         - Tool executions
@@ -424,7 +365,7 @@ class LangChainBot:
             user_input (str): The user's message or query
             
         Returns:
-            ResponseModel: Structured response with complete token counts and response text
+            dict: Structured response with content, logs, tools_executed, and token_usage
         """
         initial_state = {
             "messages": self.chat_history + [HumanMessage(content=user_input)],
@@ -433,6 +374,7 @@ class LangChainBot:
         }
         
         config = {}
+        tool_logger = None
         if self.on_tool_start or self.on_tool_end or self.on_tool_error:
             tool_logger = _InternalToolLogger(
                 on_start=self.on_tool_start,
@@ -455,11 +397,30 @@ class LangChainBot:
         # Get accumulated token usage from state
         token_usage = result.get("token_usage", {})
         
-        return ResponseModel(
-            user_tokens=token_usage.get("prompt_tokens", 0),
-            bot_tokens=token_usage.get("completion_tokens", 0),
-            response=final_response
-        )
+        # Get tools executed from callback handler
+        tools_executed = []
+        if tool_logger:
+            tools_executed = tool_logger.tool_executions
+        
+        # Generate logs (basic implementation - can be enhanced)
+        logs = []
+        for i, msg in enumerate(result["messages"]):
+            if isinstance(msg, HumanMessage):
+                logs.append(f"[USER] {msg.content}")
+            elif isinstance(msg, AIMessage):
+                if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    logs.append(f"[AGENT] Tool calls: {[tc['name'] for tc in msg.tool_calls]}")
+                elif msg.content:
+                    logs.append(f"[AGENT] Response generated")
+            elif isinstance(msg, ToolMessage):
+                logs.append(f"[TOOL] Result received")
+        
+        return {
+            "content": final_response,
+            "logs": logs,
+            "tools_executed": tools_executed,
+            "token_usage": token_usage
+        }
 
     def get_response_stream(self, user_input: str) -> Generator[str, None, None]:
         """

@@ -1,7 +1,7 @@
 """Output Node - Generates natural language response based on planner output and tools executed."""
 
 from typing import Dict, Any, List
-from langchain.schema import SystemMessage
+from langchain.schema import SystemMessage, HumanMessage
 from sonika_langchain_bot.bot.nodes.base_node import BaseNode
 
 
@@ -37,44 +37,61 @@ class OutputNode(BaseNode):
         tools_executed = state.get("tools_executed", [])
         dynamic_info = state.get("dynamic_info", "")
 
+        planner_reasoning = planner_output.get('reasoning', 'No reasoning provided')
         results_summary = self._build_results_summary(tools_executed)
 
-        context_summary = f"""
-Dynamic Context:
-{dynamic_info}
+        system_prompt = f"""# RESPONSE GENERATOR
 
-Planner Reasoning:
-{planner_output.get('reasoning', 'No reasoning provided')}
+You are a response generator in a multi-agent system. Your job is to create the final response to the user.
 
-Information from Tools:
-{results_summary}
-"""
+## YOUR ROLE
+You receive instructions from a strategic planner that has already analyzed the conversation, checked business rules, and determined what action should be taken. Your job is NOT to make decisions - your job is to EXECUTE the planner's instructions and communicate them naturally to the user.
 
-        prompt = f"""# RESPONSE GENERATOR
+## HOW YOU WORK
+1. **PLANNER REASONING** tells you WHAT to do - this is your primary directive
+2. **PERSONALITY** tells you HOW to communicate - tone, style, structure
+3. **LIMITATIONS** are absolute rules you must never break
+4. **DYNAMIC CONTEXT** and **TOOLS RESULTS** provide factual information to use
+5. **USER MESSAGE** is what the user said - respond appropriately in their language
 
-## PERSONALITY
+## CRITICAL RULES
+- FOLLOW the planner's reasoning exactly - if it says to do something, you MUST do it
+- APPLY the personality guidelines for tone and communication style
+- RESPECT all limitations without exception
+- USE only information provided in the context - never invent facts
+- RESPOND in the same language as the user
+- BE natural and conversational, not robotic
+
+Generate the appropriate response based on the information provided below.
+
+## PERSONALITY (HOW TO COMMUNICATE)
 {personality_tone}
 
-## LIMITATIONS (MANDATORY)
+## LIMITATIONS (MANDATORY RULES)
 {limitations}
+"""
+
+        analysis_input = f"""## PLANNER REASONING (WHAT TO DO)
+{planner_reasoning}
+
+## DYNAMIC CONTEXT
+{dynamic_info}
+
+## TOOLS RESULTS
+{results_summary}
 
 ## USER MESSAGE
 {user_input}
 
-## CONTEXT
-{context_summary}
-
-## INSTRUCTIONS
-1. Follow all limitations strictly
-2. Use information from Planner Reasoning and Tools Executed
-3. Be conversational, helpful, and natural
-4. Match the user's language
-5. Never invent information not provided
-
-Generate the response below:
-"""
+---
+Generate your response now:"""
         
-        response = self.model.invoke([SystemMessage(content=prompt)], config={"temperature": 0.3})
+        message_list = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=analysis_input)
+        ]
+        
+        response = self.model.invoke(message_list, config={"temperature": 0.3})
         
         if hasattr(response, 'content'):
             return response.content.strip()
@@ -83,7 +100,7 @@ Generate the response below:
     def _build_results_summary(self, tools_executed: List[Dict[str, Any]]) -> str:
         """Build summary of tool results."""
         if not tools_executed:
-            return "No tools were executed. Agent may need more information from user."
+            return "No tools were executed."
         
         summary = []
         for tool in tools_executed:
@@ -92,8 +109,8 @@ Generate the response below:
             status = tool.get("status", "unknown")
             
             if status == "success":
-                summary.append(f"From {tool_name}: {output}")
+                summary.append(f"✓ {tool_name}: {output}")
             else:
-                summary.append(f"{tool_name} failed: {output}")
+                summary.append(f"✗ {tool_name} failed: {output}")
         
-        return "\n\n".join(summary)
+        return "\n".join(summary)
