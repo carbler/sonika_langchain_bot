@@ -47,7 +47,6 @@ def on_logs_generated(logs):
         print(f"   {log}")
 
 
-
 def bot_bdi():
     # Obtener claves de API desde el archivo .env
     api_key = os.getenv("OPENAI_API_KEY")
@@ -55,23 +54,35 @@ def bot_bdi():
     language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini-2024-07-18', temperature=1)
     embeddings = OpenAIEmbeddings(api_key=api_key)
 
-    tools =[EmailTool()]
+    tools = [EmailTool()]
     bot = LangChainBot(
         language_model, 
         embeddings,  
-        instructions="Eres un agente" ,
+        instructions="Eres un agente",
         tools=tools,
         on_tool_start=on_tool_start,
         on_tool_end=on_tool_end,
-        on_tool_error=on_tool_error)
+        on_tool_error=on_tool_error
+    )
 
     user_message = 'Envia un email con la tool a erley@gmail.com con el asunto Hola y el mensaje Hola Erley'
 
-    bot.load_conversation_history([Message(content="Mi nombre es Erley", is_bot=False)])
+    # Historial usando tu clase Message
+    messages = [Message(content="Mi nombre es Erley", is_bot=False)]
+    
+    # Preparar logs históricos (vacío si es la primera vez)
+    logs = []
+
     # Obtener la respuesta del bot
-    response_model: ResponseModel = bot.get_response(user_message)
-    bot_response = response_model
-    print("Bot response", json.dumps(bot_response, indent=2, ensure_ascii=False))
+    response = bot.get_response(user_message, messages, logs)
+    
+    print("Bot response:", json.dumps(response, indent=2, ensure_ascii=False))
+    
+    # Opcional: Si quieres seguir la conversación, actualiza el historial
+    # history.append(Message(content=user_message, is_bot=False))
+    # history.append(Message(content=response["content"], is_bot=True))
+    # logs = response["logs"]
+
 
 def bot_mutinodo():
     # Obtener claves de API desde el archivo .env
