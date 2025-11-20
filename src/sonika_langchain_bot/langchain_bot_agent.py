@@ -20,8 +20,6 @@ from sonika_langchain_bot.langchain_class import (
     ILanguageModel, 
     Message, 
 )
-
-
 # ============= TOKEN USAGE MODEL =============
 
 class TokenUsage(BaseModel):
@@ -252,6 +250,49 @@ class LangChainBot:
             )
         return TokenUsage()
 
+    def _build_conditional_rules(self) -> str:
+        """Build conditional rules based on available tools."""
+        if not self.tools:
+            return ""
+        
+        tool_names = {tool.name for tool in self.tools}
+        rules = []
+        
+        # Rule 1: CORPORATE RULE - search_knowledge_documents
+        if 'search_knowledge_documents' in tool_names:
+            rules.append("""
+## CORPORATE RULE — MANDATORY USE OF `search_knowledge_documents`
+If the user's query might be answered by internal documents:
+- ALWAYS call `search_knowledge_documents` FIRST before responding
+- Use the user's message as the query
+- Never invent information if it might exist in documents
+""")
+        
+        # Rule 2: ASK BEFORE EXECUTING POLICY TOOL
+        if 'accept_policies' in tool_names:
+            rules.append("""
+## POLICY ACCEPTANCE HANDLING
+- On the FIRST user message of the conversation, you MUST ask if they accept the privacy policies and terms of use.
+- Do NOT call the `accept_policies` tool automatically.
+- Wait for the user's explicit confirmation (e.g. "yes", "sí", "acepto", "ok").
+- As soon as the user confirms, you MUST immediately call the `accept_policies` tool.
+- Pass the user's confirmation inside the `user_message` parameter.
+- If the user does NOT confirm, do not call the tool and continue waiting for acceptance.
+- This rule is applied only once: after successfully executing `accept_policies`, NEVER ask for acceptance again.
+""")
+        
+        # Rule 3: AUTOMATIC CONTACT UPDATE
+        if 'create_or_update_contact' in tool_names:
+            rules.append("""
+## AUTOMATIC CONTACT UPDATE
+If the user provides contact information (name, email, phone):
+- ALWAYS call `create_or_update_contact` immediately
+- Include any information provided (don't wait for all fields)
+- Execute this BEFORE any other action
+""")
+        
+        return "\n".join(rules) if rules else ""
+
     def _create_workflow(self) -> StateGraph:
         """
         Create standard LangGraph workflow.
@@ -274,6 +315,12 @@ class LangChainBot:
             context = self._get_context(last_user_message)
             
             system_content = self.instructions
+            
+            # Add conditional rules based on available tools
+            conditional_rules = self._build_conditional_rules()
+            if conditional_rules:
+                system_content += f"\n\n{conditional_rules}"
+            
             if context:
                 system_content += f"\n\nContext from uploaded files:\n{context}"
             
