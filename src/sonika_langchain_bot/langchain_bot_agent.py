@@ -80,6 +80,26 @@ class _InternalToolLogger(BaseCallbackHandler):
         self.on_error_callback = on_error
         self.current_tool_name = None
         self.tool_executions = []
+        self.execution_logs = []
+    
+    def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs) -> None:
+        """Called when LLM starts processing."""
+        self.execution_logs.append("[AGENT] Thinking...")
+    
+    def on_llm_end(self, response, **kwargs) -> None:
+        """Called when LLM finishes processing."""
+        # Capturar si hay tool_calls en la respuesta
+        if hasattr(response, 'generations') and response.generations:
+            for generation in response.generations:
+                if hasattr(generation[0], 'message') and hasattr(generation[0].message, 'tool_calls'):
+                    tool_calls = generation[0].message.tool_calls
+                    if tool_calls:
+                        tool_names = [tc.get('name', 'unknown') for tc in tool_calls]
+                        self.execution_logs.append(f"[AGENT] Decided to call tools: {', '.join(tool_names)}")
+                        return
+        
+        # Si no hay tool calls, es una respuesta directa
+        self.execution_logs.append("[AGENT] Generated response")
     
     def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs) -> None:
         """Called when a tool starts executing."""
@@ -91,6 +111,9 @@ class _InternalToolLogger(BaseCallbackHandler):
             "args": input_str,
             "status": "started"
         })
+        
+        self.execution_logs.append(f"[TOOL] Executing {tool_name}")
+        self.execution_logs.append(f"[TOOL] Input: {input_str[:100]}...")  # Primeros 100 chars
         
         if self.on_start_callback:
             try:
@@ -113,6 +136,9 @@ class _InternalToolLogger(BaseCallbackHandler):
             self.tool_executions[-1]["status"] = "success"
             self.tool_executions[-1]["output"] = output_str
         
+        self.execution_logs.append(f"[TOOL] {tool_name} completed successfully")
+        self.execution_logs.append(f"[TOOL] Output: {output_str[:100]}...")  # Primeros 100 chars
+        
         if self.on_end_callback:
             try:
                 self.on_end_callback(tool_name, output_str)
@@ -129,6 +155,8 @@ class _InternalToolLogger(BaseCallbackHandler):
         if self.tool_executions:
             self.tool_executions[-1]["status"] = "error"
             self.tool_executions[-1]["error"] = error_message
+        
+        self.execution_logs.append(f"[TOOL] {tool_name} failed: {error_message}")
         
         if self.on_error_callback:
             try:
@@ -415,20 +443,23 @@ If the user provides contact information (name, email, phone):
         Returns:
             dict: Structured response with content, logs, tools_executed, and token_usage
         """
+        # Crear el tool_logger para rastrear todo
+        tool_logger = _InternalToolLogger(
+            on_start=self.on_tool_start,
+            on_end=self.on_tool_end,
+            on_error=self.on_tool_error
+        )
+        
+        # Log del mensaje entrante
+        tool_logger.execution_logs.append(f"[USER] {user_input}")
+        
         initial_state = {
             "messages": self.chat_history + [HumanMessage(content=user_input)],
             "context": "",
             "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         }
         
-        config = {}
-        # Siempre crear el tool_logger para rastrear ejecuciones
-        tool_logger = _InternalToolLogger(
-            on_start=self.on_tool_start,
-            on_end=self.on_tool_end,
-            on_error=self.on_tool_error
-        )
-        config["callbacks"] = [tool_logger]
+        config = {"callbacks": [tool_logger]}
         
         # Usar get_openai_callback para trackear tokens
         with get_openai_callback() as cb:
@@ -450,30 +481,15 @@ If the user provides contact information (name, email, phone):
                 final_response = msg.content
                 break
         
-        # Get accumulated token usage from callback
-        token_usage = result["token_usage"]
-        
-        # Get tools executed from callback handler
-        tools_executed = tool_logger.tool_executions
-        
-        # Generate logs
-        logs = []
-        for i, msg in enumerate(result["messages"]):
-            if isinstance(msg, HumanMessage):
-                logs.append(f"[USER] {msg.content}")
-            elif isinstance(msg, AIMessage):
-                if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                    logs.append(f"[AGENT] Tool calls: {[tc['name'] for tc in msg.tool_calls]}")
-                elif msg.content:
-                    logs.append(f"[AGENT] Response generated")
-            elif isinstance(msg, ToolMessage):
-                logs.append(f"[TOOL] Result received")
+        # Log de la respuesta final
+        if final_response:
+            tool_logger.execution_logs.append(f"[BOT] {final_response}")
         
         return {
             "content": final_response,
-            "logs": logs,
-            "tools_executed": tools_executed,
-            "token_usage": token_usage
+            "logs": tool_logger.execution_logs,
+            "tools_executed": tool_logger.tool_executions,
+            "token_usage": result["token_usage"]
         }
 
     def get_response_stream(self, user_input: str) -> Generator[str, None, None]:

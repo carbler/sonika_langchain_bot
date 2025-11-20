@@ -4,7 +4,6 @@ from typing import Dict, Any, Optional, Callable, List
 from datetime import datetime
 from sonika_langchain_bot.bot.nodes.base_node import BaseNode
 
-
 class LoggerNode(BaseNode):
     """Logs events and generates audit trail."""
     
