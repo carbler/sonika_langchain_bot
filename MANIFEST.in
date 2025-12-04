@@ -1,0 +1,1 @@
+recursive-include src/sonika_langchain_bot/tasker/prompts *.txt
