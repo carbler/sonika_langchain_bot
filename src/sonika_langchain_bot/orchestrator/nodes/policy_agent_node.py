@@ -23,6 +23,8 @@ class PolicyAgentNode(BaseNode):
     ):
         super().__init__(logger)
         self.model = model
+        # Give access to all tools so it can find the acceptance tool
+        self.tools = tools
 
         # STRICT FILTERING: Only allow Policy Acceptance tools
         # This prevents the agent from answering questions or searching documents
