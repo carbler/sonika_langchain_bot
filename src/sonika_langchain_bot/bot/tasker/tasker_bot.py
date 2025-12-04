@@ -1,24 +1,28 @@
-"""Bot Multi-Nodo con LangGraph - True ReAct Pattern with Loop."""
+"""Tasker Bot - The robust successor to MultiNodeBot."""
 
 from typing import List, Dict, Any, Optional, Callable
 import logging
+import asyncio
 from langchain_core.messages import BaseMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph import StateGraph, END
-import asyncio
 from langchain_mcp_adapters.client import MultiServerMCPClient
-
-from sonika_langchain_bot.bot.state import ChatState
-from sonika_langchain_bot.bot.nodes.react_agent_node import ReActAgentNode
-from sonika_langchain_bot.bot.nodes.executor_node import ExecutorNode
-from sonika_langchain_bot.bot.nodes.output_node import OutputNode
-from sonika_langchain_bot.bot.nodes.logger_node import LoggerNode
 from langchain_community.callbacks.manager import get_openai_callback
 
+from sonika_langchain_bot.bot.tasker.state import ChatState
+from sonika_langchain_bot.bot.tasker.nodes.planner_node import PlannerNode
+from sonika_langchain_bot.bot.tasker.nodes.executor_node import ExecutorNode
+from sonika_langchain_bot.bot.tasker.nodes.output_node import OutputNode
+from sonika_langchain_bot.bot.tasker.nodes.logger_node import LoggerNode
+from sonika_langchain_bot.bot.tasker.nodes.validator_node import ValidatorNode
 
-class MultiNodeBot:
-    """Bot with true ReAct pattern - Agent → Tool → Observation → Agent (loop)."""
-    
+
+class TaskerBot:
+    """
+    Bot with enhanced ReAct pattern and robust instruction following.
+    Drop-in replacement for MultiNodeBot but with separate internal architecture.
+    """
+
     def __init__(
         self,
         language_model,
@@ -43,7 +47,7 @@ class MultiNodeBot:
         self.logger = logger or logging.getLogger(__name__)
         if logger is None:
             self.logger.addHandler(logging.NullHandler())
-        
+
         self.language_model = language_model
         self.embeddings = embeddings
         self.function_purpose = function_purpose
@@ -59,18 +63,19 @@ class MultiNodeBot:
         self.max_logs = max_logs
         self.max_iterations = max_iterations
         self.executor_max_retries = executor_max_retries
-        
+
+        # Callbacks
         self.on_planner_update = on_planner_update
         self.on_tool_start = on_tool_start
         self.on_tool_end = on_tool_end
         self.on_tool_error = on_tool_error
         self.on_logs_generated = on_logs_generated
-        
+
         self.model = language_model.model
         self.graph = self._build_workflow()
-        
+
     def _initialize_mcp(self, mcp_servers: Dict[str, Any]):
-        """Initialize MCP (Model Context Protocol) connections and load available tools."""
+        """Initialize MCP (Model Context Protocol)."""
         try:
             self.mcp_client = MultiServerMCPClient(mcp_servers)
             mcp_tools = asyncio.run(self.mcp_client.get_tools())
@@ -80,17 +85,18 @@ class MultiNodeBot:
             self.mcp_client = None
 
     def _build_workflow(self) -> StateGraph:
-        """Build workflow: Thinking → ReAct → Output."""
-        
-        
-        react_agent = ReActAgentNode(
+        """Build the Planner -> Executor -> Output workflow."""
+
+        # 1. Planner Node (The Brain)
+        planner = PlannerNode(
             model=self.model,
             tools=self.tools,
             max_iterations=self.max_iterations,
             on_planner_update=self.on_planner_update,
             logger=self.logger
         )
-        
+
+        # 2. Executor Node (The Hands)
         executor = ExecutorNode(
             tools=self.tools,
             max_retries=self.executor_max_retries,
@@ -99,66 +105,92 @@ class MultiNodeBot:
             on_tool_error=self.on_tool_error,
             logger=self.logger
         )
-        
+
+        # 3. Output Node (The Voice)
         output = OutputNode(
             model=self.model,
             logger=self.logger
         )
-        
-        logger = LoggerNode(
+
+        # 4. Logger Node (The Recorder)
+        logger_node = LoggerNode(
             on_logs_generated=self.on_logs_generated,
             logger=self.logger
         )
-        
+
+        # 5. Validator Node (The Quality Control)
+        validator = ValidatorNode(
+            model=self.model,
+            logger=self.logger
+        )
+
+        # Build Graph
         workflow = StateGraph(ChatState)
-        
-        # SOLO estos nodos
-        workflow.add_node("agent", react_agent)
+
+        workflow.add_node("planner", planner)
         workflow.add_node("executor", executor)
         workflow.add_node("output", output)
-        workflow.add_node("logger", logger)
+        workflow.add_node("logger", logger_node)
+        workflow.add_node("validator", validator)
 
-        # Set entry point - start directly with agent
-        workflow.set_entry_point("agent")
-    
-        
-        # ReAct decide si ejecutar tool o terminar
-        def route_after_agent(state: ChatState) -> str:
+        # Start at Planner
+        workflow.set_entry_point("planner")
+
+        # Conditional Edge: Planner -> Executor OR Validator
+        def route_after_planner(state: ChatState) -> str:
             planner_output = state.get("planner_output", {})
             decision = planner_output.get("decision", "finish")
-            
+
             if decision == "execute_tool":
                 return "executor"
-            return "output"
-        
+            return "validator"
+
         workflow.add_conditional_edges(
-            "agent",
-            route_after_agent,
+            "planner",
+            route_after_planner,
             {
                 "executor": "executor",
+                "validator": "validator"
+            }
+        )
+
+        # Loop: Executor -> Planner
+        workflow.add_edge("executor", "planner")
+
+        # Conditional Edge: Validator -> Output OR Planner (Retry)
+        def route_after_validator(state: ChatState) -> str:
+            validator_output = state.get("validator_output", {})
+            status = validator_output.get("status", "approved")
+
+            if status == "rejected":
+                return "planner"
+            return "output"
+
+        workflow.add_conditional_edges(
+            "validator",
+            route_after_validator,
+            {
+                "planner": "planner",
                 "output": "output"
             }
         )
-        
-        # Loop: Executor → ReAct
-        workflow.add_edge("executor", "agent")
-        
-        # Output → Logger → END
+
+        # End: Output -> Logger -> END
         workflow.add_edge("output", "logger")
         workflow.add_edge("logger", END)
-        
+
         return workflow.compile()
-    
+
     def get_response(
         self,
         user_input: str,
         messages: List[BaseMessage],
         logs: List[str],
     ) -> Dict[str, Any]:
-        
+
         limited_messages = self._limit_messages(messages)
         limited_logs = self._limit_logs(logs)
-        
+
         initial_state: ChatState = {
             "user_input": user_input,
             "messages": limited_messages,
@@ -182,7 +214,7 @@ class MultiNodeBot:
                 "total_tokens": 0
             }
         }
-        
+
         with get_openai_callback() as cb:
             result = asyncio.run(self.graph.ainvoke(initial_state))
             result["token_usage"] = {
@@ -190,25 +222,31 @@ class MultiNodeBot:
                 "completion_tokens": cb.completion_tokens,
                 "total_tokens": cb.total_tokens
             }
-        
+
         content = result.get("output_node_response", "")
+        # logs and tools_executed in the result are now the cumulative lists
         new_logs = result.get("logger_output", [])
+
+        full_logs = result.get("logs", [])
+        original_log_count = len(limited_logs)
+        new_logs_slice = full_logs[original_log_count:]
+
         tools_executed = result.get("tools_executed", [])
         token_usage = result.get("token_usage", {})
-        
+
         return {
             "content": content,
-            "logs": new_logs,
+            "logs": new_logs_slice, # Safer to return only new logs
             "tools_executed": tools_executed,
             "token_usage": token_usage
         }
-    
+
     def _limit_messages(self, messages: List[BaseMessage]) -> List[BaseMessage]:
         """Limit historical messages."""
         if len(messages) <= self.max_messages:
             return messages
         return messages[-self.max_messages:]
-    
+
     def _limit_logs(self, logs: List[str]) -> List[str]:
         """Limit historical logs."""
         if len(logs) <= self.max_logs:

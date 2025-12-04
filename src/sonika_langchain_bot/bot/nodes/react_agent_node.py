@@ -1,7 +1,7 @@
 """ReAct Agent Node - Con bind_tools y conversión de mensajes custom."""
 
 from typing import Dict, Any, Optional, Callable, List
-from langchain.schema import SystemMessage, HumanMessage, AIMessage, BaseMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 from sonika_langchain_bot.bot.nodes.base_node import BaseNode
 
 
