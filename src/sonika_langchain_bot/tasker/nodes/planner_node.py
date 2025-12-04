@@ -28,7 +28,7 @@ class PlannerNode(BaseNode):
         # Load prompts
         self.base_path = os.path.dirname(os.path.dirname(__file__))
         self.system_prompt_template = self._load_prompt("planner_system.txt")
-        self.domain_rules = self._load_prompt("domain_rules.txt")
+        # Removed domain_rules
 
     def _load_prompt(self, filename: str) -> str:
         """Loads a prompt from the prompts directory."""
@@ -52,13 +52,12 @@ class PlannerNode(BaseNode):
         # Build prompt inputs
         function_purpose = state.get("function_purpose", "")
         limitations = state.get("limitations", "")
-        conditional_rules = self.domain_rules
 
         # Construct System Prompt
         system_prompt = self.system_prompt_template.format(
             function_purpose=function_purpose,
             limitations=limitations,
-            conditional_rules=conditional_rules
+            conditional_rules="" # Removed domain_rules usage
         )
 
         # Build Analysis Input

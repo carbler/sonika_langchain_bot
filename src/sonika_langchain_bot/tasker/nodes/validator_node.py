@@ -80,6 +80,10 @@ Verify this work now."""
                  feedback = content
 
             log_msg = f"Validación: {status.upper()}. Feedback: {feedback}"
+
+            # Debug Log explícito (se verá en consola si se activan logs)
+            self.logger.info(f"VALIDATOR DEBUG -> Input: {planner_reasoning[:50]}... | Decision: {status} | Feedback: {feedback}")
+
             log_update = self._add_log(state, log_msg)
 
             return {
