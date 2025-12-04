@@ -7,7 +7,9 @@ Analyze the User Input and the Current Context to route the conversation to the 
 
 1. **PolicyAgent**:
    - **Role**: Handles mandatory policy acceptance.
-   - **Trigger**: IF the system instructions say policies are mandatory AND context shows they are NOT accepted yet.
+   - **Trigger**:
+     - IF the system instructions say policies are mandatory AND context shows they are NOT accepted yet.
+     - IF the user says "yes", "ok", "agree", "claro" AND the policies are NOT accepted yet (this is the confirmation).
    - **Priority**: HIGHEST. Overrides everything else.
 
 2. **ResearchAgent**:
@@ -29,8 +31,15 @@ Analyze the User Input and the Current Context to route the conversation to the 
 - **Instructions**: {function_purpose}
 
 ## DECISION LOGIC
-1. **CHECK POLICIES**: Does `dynamic_info` or history show policies are accepted? If NO -> **PolicyAgent**.
-2. **CHECK INTENT**:
+1. **CHECK POLICIES (CRITICAL)**:
+   - Check `dynamic_info` or `function_purpose` to see if policies are accepted.
+   - IF Policies are **NOT ACCEPTED**:
+     - Does the user say "yes", "ok", "acepto", "claro"? -> **PolicyAgent** (To execute acceptance).
+     - Does the user ask a question? -> **PolicyAgent** (To block and ask for acceptance).
+     - Does the user say "hello"? -> **PolicyAgent** (To ask for acceptance before helping).
+     - **Result**: Route to **PolicyAgent** for ALMOST EVERYTHING until policies are accepted.
+
+2. **CHECK INTENT (Only if Policies are Accepted)**:
    - Greeting/Identity? -> **ChitchatAgent**.
    - Information Question? -> **ResearchAgent**.
    - Action/Command? -> **TaskAgent**.
