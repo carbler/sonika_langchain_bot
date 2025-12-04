@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="sonika-langchain-bot",
-    version="0.0.31", 
+    version="0.0.33",
     description="Agente langchain con LLM",
     author="Erley Blanco Carvajal",
     license="MIT License",
@@ -10,6 +10,7 @@ setup(
     long_description_content_type="text/markdown",
     packages=find_packages(where="src"),  # Encuentra los paquetes dentro de "src"
     package_dir={"": "src"},  # Indica que los paquetes están en el directorio "src"
+    include_package_data=True,  # Importante para incluir archivos no-Python definidos en MANIFEST.in
     install_requires=[
         "langchain-mcp-adapters==0.1.9",
         "langchain-community==0.3.26",
