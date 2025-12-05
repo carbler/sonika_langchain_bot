@@ -122,7 +122,29 @@ class OrchestratorBot:
             }
         )
 
-        workflow.add_edge("policy_agent", END)
+        # Logic for Policy Agent Continuity
+        def should_continue_policy(state):
+            # Check if policies were just accepted in this turn
+            tools = state.get("tools_executed", [])
+            # Look at the LAST tool executed
+            if tools:
+                last_tool = tools[-1]
+                if last_tool.get("tool_name") == "accept_policies" and last_tool.get("status") == "success":
+                    # Policies accepted! Loop back to Orchestrator to handle the pending intent
+                    return "orchestrator"
+            # Otherwise, end turn
+            return END
+
+        workflow.add_conditional_edges(
+            "policy_agent",
+            should_continue_policy,
+            {
+                "orchestrator": "orchestrator",
+                END: END
+            }
+        )
+
+        # Other agents terminate the turn
         workflow.add_edge("research_agent", END)
         workflow.add_edge("task_agent", END)
         workflow.add_edge("chitchat_agent", END)
