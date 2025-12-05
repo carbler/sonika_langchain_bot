@@ -29,7 +29,12 @@ class ResearchAgentNode(BaseNode):
         self.planner = InnerPlanner(
             model,
             self.tools,
-            system_prompt="You are a Researcher. Use tools to find info. If found, answer. If not, say 'Unknown'.",
+            system_prompt=(
+                "You are a Researcher.\n"
+                "Use tools to find info in the Knowledge Base (documents).\n"
+                "Do NOT use this for checking car availability or prices (use TaskAgent for that).\n"
+                "If found, answer based on the document. If not, say 'Unknown'."
+            ),
             logger=logger
         )
         self.executor = InnerExecutor(
@@ -59,13 +64,18 @@ class ResearchAgentNode(BaseNode):
 
     async def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Run the sub-graph."""
+        initial_tools_count = len(state.get("tools_executed", []))
+
         result = await self.subgraph.ainvoke(state)
         final_msg = result.get("planner_response")
         content = final_msg.content if final_msg else "Error in Research"
 
-        # TODO: Implement tool history reconstruction here too if needed for reporting
+        # Calculate new tools executed
+        final_tools = result.get("tools_executed", [])
+        new_tools = final_tools[initial_tools_count:]
 
         return {
             "agent_response": content,
+            "tools_executed": new_tools,
             **self._add_log(state, "ResearchAgent finished.")
         }
