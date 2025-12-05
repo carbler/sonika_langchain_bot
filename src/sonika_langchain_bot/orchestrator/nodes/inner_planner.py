@@ -17,17 +17,44 @@ class InnerPlanner(BaseNode):
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Plan next step."""
 
-        # Build history from state
-        history = state.get("messages", [])
+        # 1. Get Context from State
+        function_purpose = state.get("function_purpose", "")
+        personality_tone = state.get("personality_tone", "")
+        limitations = state.get("limitations", "")
+        dynamic_info = state.get("dynamic_info", "")
+
+        # 2. Get History
+        # We need the global conversation history to have context
+        global_history = state.get("messages", [])
+
+        # 3. Get ReAct Scratchpad (intermediate steps for this turn)
         scratchpad = state.get("scratchpad", [])
 
         user_input = state.get("user_input", "")
 
-        # Combine messages
+        # 4. Construct Full System Prompt
+        full_system_prompt = (
+            f"{self.system_prompt}\n\n"
+            f"--- GLOBAL INSTRUCTIONS ---\n"
+            f"{function_purpose}\n\n"
+            f"--- PERSONALITY ---\n"
+            f"{personality_tone}\n\n"
+            f"--- LIMITATIONS ---\n"
+            f"{limitations}\n\n"
+            f"--- DYNAMIC INFO (Date/Time/User) ---\n"
+            f"{dynamic_info}\n\n"
+            f"--- INSTRUCTION ON DATES ---\n"
+            f"If the user uses relative dates (e.g. 'tomorrow', 'in 3 days'), you MUST calculate the exact date based on the 'Date/Time' provided in 'DYNAMIC INFO'. Do NOT ask the user for the date if you can calculate it.\n"
+            f"ALWAYS respond in the same language as the user (likely Spanish)."
+        )
+
+        # 5. Combine Messages
+        # System Prompt + Global History + Current Input + Scratchpad
         messages = [
-            SystemMessage(content=self.system_prompt),
+            SystemMessage(content=full_system_prompt),
+            *global_history, # Add history so the agent remembers previous turns
             HumanMessage(content=f"User Request: {user_input}"),
-            *scratchpad # Append previous tool interactions
+            *scratchpad # Append previous tool interactions for this specific turn
         ]
 
         try:
