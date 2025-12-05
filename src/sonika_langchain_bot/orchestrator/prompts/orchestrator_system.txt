@@ -35,12 +35,10 @@ Analyze the User Input and the Current Context to route the conversation to the 
 
 ## DECISION LOGIC
 1. **CHECK POLICIES (CRITICAL)**:
-   - Check `dynamic_info` or `function_purpose` to see if policies are accepted.
-   - IF Policies are **NOT ACCEPTED**:
-     - Does the user say "yes", "ok", "acepto", "claro"? -> **PolicyAgent** (To execute acceptance).
-     - Does the user ask a question? -> **PolicyAgent** (To block and ask for acceptance).
-     - Does the user say "hello"? -> **PolicyAgent** (To ask for acceptance before helping).
-     - **Result**: Route to **PolicyAgent** for ALMOST EVERYTHING until policies are accepted.
+   - **STEP 1:** Look at `Context` (`dynamic_info`). Does it say **"Policies accepted: Yes"** (or similar)?
+     - **IF YES** -> Policies are DONE. **STOP** checking policies. Proceed to STEP 2 (Check Intent).
+   - **STEP 2:** If `Context` does NOT show acceptance, AND `Instructions` say they are mandatory:
+     - Route to **PolicyAgent**. (Even for greetings or questions, if policies are missing, we must block).
 
 2. **CHECK INTENT (Only if Policies are Accepted)**:
    - Greeting/Identity? -> **ChitchatAgent**.

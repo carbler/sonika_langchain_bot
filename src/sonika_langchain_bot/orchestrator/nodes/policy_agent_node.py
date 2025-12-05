@@ -39,9 +39,10 @@ class PolicyAgentNode(BaseNode):
                 "You are the Policy Enforcement Agent.\n"
                 "Your ONLY goal is to register the user's acceptance of the Terms and Privacy Policy.\n\n"
                 "RULES:\n"
-                "1. If the user says 'yes', 'ok', 'agree', 'claro', or confirms acceptance -> IMMEDIATELY USE THE TOOL `AcceptPoliciesTool`.\n"
-                "2. If the user asks a question, DO NOT ANSWER IT. Instead, say: 'I cannot answer until you accept the policies.'\n"
-                "3. Use the GLOBAL INSTRUCTIONS below to find the correct policy links."
+                "1. CHECK DYNAMIC INFO FIRST: If it says 'Policies accepted: Yes', say 'Policies are already accepted. How can I help?' and STOP.\n"
+                "2. If the user says 'yes', 'ok', 'agree', 'claro', or confirms acceptance -> IMMEDIATELY USE THE TOOL `AcceptPoliciesTool`.\n"
+                "3. If the user asks a question, DO NOT ANSWER IT. Instead, say: 'I cannot answer until you accept the policies.'\n"
+                "4. Use the GLOBAL INSTRUCTIONS below to find the correct policy links."
             ),
             logger=logger
         )
