@@ -32,49 +32,67 @@ class InnerExecutor(BaseNode):
             return {"executor_done": True}
 
         tool_outputs = []
+        tools_executed_list = []
 
         for tool_call in response.tool_calls:
             tool_name = tool_call["name"]
             args = tool_call["args"]
             call_id = tool_call["id"]
 
+            # Serialize args for logging and reporting
+            args_str = json.dumps(args) if isinstance(args, dict) else str(args)
+            status = "failed"
+            output = ""
+
             if tool_name in self.tools:
                 try:
                     # Notify Start
                     if self.on_tool_start:
                         try:
-                            # Serialize args if dict
-                            args_str = json.dumps(args) if isinstance(args, dict) else str(args)
                             self.on_tool_start(tool_name, args_str)
-                        except:
+                        except Exception:
                             pass
 
                     # Execute
                     result = await self.tools[tool_name].ainvoke(args)
                     output = str(result)
+                    status = "success"
 
                     # Notify End
                     if self.on_tool_end:
                         try:
                             self.on_tool_end(tool_name, output)
-                        except:
+                        except Exception:
                             pass
 
                 except Exception as e:
                     output = f"Error: {e}"
+                    status = "failed"
                     if self.on_tool_error:
                         try:
                             self.on_tool_error(tool_name, str(e))
-                        except:
+                        except Exception:
                             pass
             else:
                 output = f"Tool {tool_name} not found"
+                status = "failed"
                 if self.on_tool_error:
-                    self.on_tool_error(tool_name, "Tool not found")
+                    try:
+                        self.on_tool_error(tool_name, "Tool not found")
+                    except Exception:
+                        pass
 
             tool_outputs.append(ToolMessage(content=output, tool_call_id=call_id))
 
+            tools_executed_list.append({
+                "tool_name": tool_name,
+                "args": args_str,
+                "output": output,
+                "status": status
+            })
+
         return {
             "scratchpad": [response] + tool_outputs, # Append (AIMessage + ToolMessages)
+            "tools_executed": tools_executed_list,   # Append to global state
             "executor_done": False # Loop continues
         }
