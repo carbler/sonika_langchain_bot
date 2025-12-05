@@ -14,12 +14,15 @@ Analyze the User Input and the Current Context to route the conversation to the 
 
 2. **ResearchAgent**:
    - **Role**: Searches for information in the Knowledge Base (documents).
-   - **Trigger**: IF the user asks a question about requirements, prices, general info, or "how to".
-   - **Exclusion**: Do NOT use if the user is asking to perform an action (reserve, save data).
+   - **Trigger**: IF the user asks a question about requirements, policies, locations, general info, or "how to".
+   - **Exclusion**: Do NOT use for checking real-time car availability, prices, quotes, or reservations. Use TaskAgent for that.
 
 3. **TaskAgent**:
-   - **Role**: Executes business actions (Quote, Reserve, Save Contact, Send Email).
-   - **Trigger**: IF the user explicitly asks to perform an action OR provides data to be saved.
+   - **Role**: Executes business actions (Quote, Reserve, Save Contact, Send Email, Check Availability).
+   - **Trigger**:
+     - IF the user asks to check availability, prices, or see cars (e.g., "cheapest car", "prices for tomorrow").
+     - IF the user explicitly asks to perform an action (reserve, quote, send email).
+     - IF the user provides data to be saved (name, phone, etc.).
 
 4. **ChitchatAgent**:
    - **Role**: Handles greetings, identity questions ("Who are you?"), and small talk.
@@ -41,8 +44,8 @@ Analyze the User Input and the Current Context to route the conversation to the 
 
 2. **CHECK INTENT (Only if Policies are Accepted)**:
    - Greeting/Identity? -> **ChitchatAgent**.
-   - Information Question? -> **ResearchAgent**.
-   - Action/Command? -> **TaskAgent**.
+   - Real-time Info (Prices, Cars, Availability) OR Actions? -> **TaskAgent**.
+   - Static/General Info (Docs, Requirements)? -> **ResearchAgent**.
 
 ## OUTPUT FORMAT
 Return a JSON object:
