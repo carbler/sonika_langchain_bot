@@ -23,8 +23,17 @@ class TaskAgentNode(BaseNode):
     ):
         super().__init__(logger)
         self.model = model
-        # Filter tools (everything NOT search)
-        self.tools = [t for t in tools if "search" not in t.name.lower()]
+
+        # Filter tools:
+        # 1. Exclude Search/Knowledge (handled by ResearchAgent)
+        # 2. Exclude Policy Acceptance (handled by PolicyAgent) - This prevents double execution
+        self.tools = [
+            t for t in tools
+            if "search" not in t.name.lower()
+            and "knowledge" not in t.name.lower()
+            and "policy" not in t.name.lower()
+            and "policies" not in t.name.lower()
+        ]
 
         self.planner = InnerPlanner(
             model,
@@ -34,7 +43,8 @@ class TaskAgentNode(BaseNode):
                 "Your job is to execute business actions (Quotes, Reservations, Contact Saving, etc.) following the GLOBAL INSTRUCTIONS strictly.\n"
                 "1. If parameters are missing, ASK the user (One question at a time).\n"
                 "2. If you can calculate a parameter (like dates) from the context, DO IT. Do NOT ask for ISO dates.\n"
-                "3. Once you have all data, EXECUTE the tool."
+                "3. If the user provides a Name, Email, or Phone -> YOU MUST SAVE IT using the contact tool.\n"
+                "4. Once you have all data, EXECUTE the tool."
             ),
             logger=logger
         )

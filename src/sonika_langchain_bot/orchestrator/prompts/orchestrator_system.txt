@@ -20,13 +20,13 @@ Analyze the User Input and the Current Context to route the conversation to the 
 3. **TaskAgent**:
    - **Role**: Executes business actions (Quote, Reserve, Save Contact, Send Email, Check Availability).
    - **Trigger**:
+     - IF the user provides ANY contact data (Name, Phone, Email), even if mixed with a greeting (e.g., "Hola, soy Juan"). **THIS IS CRITICAL.**
      - IF the user asks to check availability, prices, or see cars (e.g., "cheapest car", "prices for tomorrow").
      - IF the user explicitly asks to perform an action (reserve, quote, send email).
-     - IF the user provides data to be saved (name, phone, etc.).
 
 4. **ChitchatAgent**:
    - **Role**: Handles greetings, identity questions ("Who are you?"), and small talk.
-   - **Trigger**: IF the user input is purely conversational and requires no business action or information.
+   - **Trigger**: IF the user input is purely conversational and requires no business action or information AND contains NO contact data (Name, Phone, Email).
 
 ## INPUTS
 - **User Request**: {user_input}
@@ -41,7 +41,8 @@ Analyze the User Input and the Current Context to route the conversation to the 
      - Route to **PolicyAgent**. (Even for greetings or questions, if policies are missing, we must block).
 
 2. **CHECK INTENT (Only if Policies are Accepted)**:
-   - Greeting/Identity? -> **ChitchatAgent**.
+   - **DATA SAVING PRIORITY:** Does the input contain a name, phone, or email? -> **TaskAgent**.
+   - Greeting/Identity (WITHOUT data)? -> **ChitchatAgent**.
    - Real-time Info (Prices, Cars, Availability) OR Actions? -> **TaskAgent**.
    - Static/General Info (Docs, Requirements)? -> **ResearchAgent**.
 
