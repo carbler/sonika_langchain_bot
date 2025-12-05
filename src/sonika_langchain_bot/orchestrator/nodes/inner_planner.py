@@ -52,18 +52,20 @@ class InnerPlanner(BaseNode):
         user_input = state.get("user_input", "")
 
         # 4. Construct Full System Prompt
+        # Removed hardcoded date instructions as requested.
+        # Strengthened Personality instruction.
         full_system_prompt = (
             f"{self.system_prompt}\n\n"
             f"--- GLOBAL INSTRUCTIONS ---\n"
             f"{function_purpose}\n\n"
-            f"--- PERSONALITY ---\n"
-            f"{personality_tone}\n\n"
+            f"--- PERSONALITY & TONE ---\n"
+            f"{personality_tone}\n"
+            f"IMPORTANT: You MUST adopt this tone in your final answer. Be natural, not robotic.\n\n"
             f"--- LIMITATIONS ---\n"
             f"{limitations}\n\n"
-            f"--- DYNAMIC INFO (Date/Time/User) ---\n"
+            f"--- DYNAMIC INFO ---\n"
             f"{dynamic_info}\n\n"
-            f"--- INSTRUCTION ON DATES ---\n"
-            f"If the user uses relative dates (e.g. 'tomorrow', 'in 3 days'), you MUST calculate the exact date based on the 'Date/Time' provided in 'DYNAMIC INFO'. Do NOT ask the user for the date if you can calculate it.\n"
+            f"--- LANGUAGE INSTRUCTION ---\n"
             f"ALWAYS respond in the same language as the user (likely Spanish)."
         )
 
