@@ -37,18 +37,11 @@ Analyze the User Input, the Current Context, AND the Conversation History to rou
 {recent_activity}
 
 ## CONVERSATION HISTORY ANALYSIS (CRITICAL)
-Before deciding, review the recent conversation history to detect **PENDING INTENTS**:
+Before deciding, review the MESSAGE HISTORY provided in the context to detect **PENDING INTENTS**:
 1. **Interrupted Tasks:** Did the user ask for something (e.g., "price of car") but was interrupted (e.g., by policy request)?
    - If YES, and policies are now accepted -> Route to **TaskAgent** to resume the request (e.g., car price).
-2. **Bot Offers:** Did the bot just ask "Do you want to reserve?" or "Can I help you with that?"?
-   - If YES, and user says "Ayudame", "Si", "Dale" -> Route to **TaskAgent** to fulfill the offer.
-
-## CONVERSATION HISTORY ANALYSIS (CRITICAL)
-Before deciding, review the recent conversation history to detect **PENDING INTENTS**:
-1. **Interrupted Tasks:** Did the user ask for something (e.g., "price of car") but was interrupted (e.g., by policy request)?
-   - If YES, and policies are now accepted -> Route to **TaskAgent** to resume the request (e.g., car price).
-2. **Bot Offers:** Did the bot just ask "Do you want to reserve?" or "Can I help you with that?"?
-   - If YES, and user says "Ayudame", "Si", "Dale" -> Route to **TaskAgent** to fulfill the offer.
+2. **Bot Questions:** Did the ASSISTANT just ask a specific question (e.g., "Do you want to reserve?", "Confirm city?")?
+   - If YES, and user says "Si", "Ayudame", "Dale" -> Route to **TaskAgent** to answer the question and proceed.
 
 ## DECISION LOGIC
 1. **CHECK POLICIES (CRITICAL)**:
