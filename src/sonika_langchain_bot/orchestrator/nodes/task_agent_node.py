@@ -29,7 +29,13 @@ class TaskAgentNode(BaseNode):
         self.planner = InnerPlanner(
             model,
             self.tools,
-            system_prompt="You are a Task Executor. Validate params strictly. If missing, ASK user. If done, provide final answer.",
+            system_prompt=(
+                "You are a Task Executor.\n"
+                "Your job is to execute business actions (Quotes, Reservations, Contact Saving, etc.) following the GLOBAL INSTRUCTIONS strictly.\n"
+                "1. If parameters are missing, ASK the user (One question at a time).\n"
+                "2. If you can calculate a parameter (like dates) from the context, DO IT. Do NOT ask for ISO dates.\n"
+                "3. Once you have all data, EXECUTE the tool."
+            ),
             logger=logger
         )
         self.executor = InnerExecutor(

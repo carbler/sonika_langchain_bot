@@ -29,7 +29,12 @@ class ResearchAgentNode(BaseNode):
         self.planner = InnerPlanner(
             model,
             self.tools,
-            system_prompt="You are a Researcher. Use tools to find info. If found, answer. If not, say 'Unknown'.",
+            system_prompt=(
+                "You are a Researcher.\n"
+                "Use tools to find info in the Knowledge Base (documents).\n"
+                "Do NOT use this for checking car availability or prices (use TaskAgent for that).\n"
+                "If found, answer based on the document. If not, say 'Unknown'."
+            ),
             logger=logger
         )
         self.executor = InnerExecutor(

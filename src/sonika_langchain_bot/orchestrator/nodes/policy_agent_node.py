@@ -27,10 +27,8 @@ class PolicyAgentNode(BaseNode):
         self.tools = tools
 
         # STRICT FILTERING: Only allow Policy Acceptance tools
-        # This prevents the agent from answering questions or searching documents
         self.tools = [t for t in tools if "policy" in t.name.lower() or "policies" in t.name.lower()]
 
-        # If no policy tool found (should not happen in prod), we warn but continue (agent will just talk)
         if not self.tools:
             self.logger.error("WARNING: No AcceptPoliciesTool found for PolicyAgent.")
 
@@ -42,9 +40,8 @@ class PolicyAgentNode(BaseNode):
                 "Your ONLY goal is to register the user's acceptance of the Terms and Privacy Policy.\n\n"
                 "RULES:\n"
                 "1. If the user says 'yes', 'ok', 'agree', 'claro', or confirms acceptance -> IMMEDIATELY USE THE TOOL `AcceptPoliciesTool`.\n"
-                "2. If the user asks a question (e.g., 'what are requirements?'), DO NOT ANSWER IT. Instead, say: 'I cannot answer until you accept the policies.'\n"
-                "3. If the user has NOT accepted yet, provide the policy links and ask for confirmation.\n"
-                "4. NEVER use search tools. NEVER provide rental info. ONLY handle policies.\n"
+                "2. If the user asks a question, DO NOT ANSWER IT. Instead, say: 'I cannot answer until you accept the policies.'\n"
+                "3. Use the GLOBAL INSTRUCTIONS below to find the correct policy links."
             ),
             logger=logger
         )
