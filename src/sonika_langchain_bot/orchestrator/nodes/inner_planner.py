@@ -14,6 +14,25 @@ class InnerPlanner(BaseNode):
         self.model = model.bind_tools(tools) if tools else model
         self.system_prompt = system_prompt
 
+    def _convert_messages(self, messages: List[Any]) -> List[BaseMessage]:
+        """Convert custom Message objects to LangChain BaseMessage objects."""
+        converted = []
+        for msg in messages:
+            if isinstance(msg, BaseMessage):
+                converted.append(msg)
+                continue
+
+            # Check for custom Message class attributes (duck typing)
+            if hasattr(msg, "is_bot") and hasattr(msg, "content"):
+                if msg.is_bot:
+                    converted.append(AIMessage(content=msg.content))
+                else:
+                    converted.append(HumanMessage(content=msg.content))
+            else:
+                # Fallback for unknown objects, treat as string content from human
+                converted.append(HumanMessage(content=str(msg)))
+        return converted
+
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Plan next step."""
 
@@ -23,9 +42,9 @@ class InnerPlanner(BaseNode):
         limitations = state.get("limitations", "")
         dynamic_info = state.get("dynamic_info", "")
 
-        # 2. Get History
-        # We need the global conversation history to have context
-        global_history = state.get("messages", [])
+        # 2. Get History & Convert to LangChain format
+        raw_history = state.get("messages", [])
+        global_history = self._convert_messages(raw_history)
 
         # 3. Get ReAct Scratchpad (intermediate steps for this turn)
         scratchpad = state.get("scratchpad", [])
