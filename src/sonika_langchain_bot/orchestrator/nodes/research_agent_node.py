@@ -59,13 +59,18 @@ class ResearchAgentNode(BaseNode):
 
     async def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Run the sub-graph."""
+        initial_tools_count = len(state.get("tools_executed", []))
+
         result = await self.subgraph.ainvoke(state)
         final_msg = result.get("planner_response")
         content = final_msg.content if final_msg else "Error in Research"
 
-        # TODO: Implement tool history reconstruction here too if needed for reporting
+        # Calculate new tools executed
+        final_tools = result.get("tools_executed", [])
+        new_tools = final_tools[initial_tools_count:]
 
         return {
             "agent_response": content,
+            "tools_executed": new_tools,
             **self._add_log(state, "ResearchAgent finished.")
         }
