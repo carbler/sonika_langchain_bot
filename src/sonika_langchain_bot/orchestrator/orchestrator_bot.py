@@ -71,7 +71,13 @@ class OrchestratorBot:
         orchestrator = OrchestratorNode(self.model, self.logger)
 
         # Specialists
-        policy_agent = PolicyAgentNode(self.model, self.logger)
+        # Policy Agent now supports tools
+        policy_agent = PolicyAgentNode(
+            self.model, self.tools, self.logger,
+            on_tool_start=self.on_tool_start,
+            on_tool_end=self.on_tool_end,
+            on_tool_error=self.on_tool_error
+        )
         chitchat_agent = ChitchatAgentNode(self.model, self.logger)
 
         # Complex agents receive tool callbacks
