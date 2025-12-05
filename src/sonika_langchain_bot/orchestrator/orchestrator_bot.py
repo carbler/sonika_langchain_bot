@@ -68,10 +68,10 @@ class OrchestratorBot:
             self.logger.error(f"Error initializing MCP: {e}")
 
     def _build_workflow(self) -> StateGraph:
-        orchestrator = OrchestratorNode(self.model, self.logger)
+        # Orchestrator now receives tools to build dynamic prompt
+        orchestrator = OrchestratorNode(self.model, self.tools, self.logger)
 
         # Specialists
-        # Policy Agent now supports tools
         policy_agent = PolicyAgentNode(
             self.model, self.tools, self.logger,
             on_tool_start=self.on_tool_start,
@@ -80,7 +80,6 @@ class OrchestratorBot:
         )
         chitchat_agent = ChitchatAgentNode(self.model, self.logger)
 
-        # Complex agents receive tool callbacks
         research_agent = ResearchAgentNode(
             self.model, self.tools, self.logger,
             on_tool_start=self.on_tool_start,
