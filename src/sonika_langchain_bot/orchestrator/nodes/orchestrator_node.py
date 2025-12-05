@@ -1,9 +1,9 @@
 """Orchestrator Node - The Brain."""
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 import os
 import json
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 from sonika_langchain_bot.orchestrator.nodes.base_node import BaseNode
 
 class OrchestratorNode(BaseNode):
@@ -25,6 +25,34 @@ class OrchestratorNode(BaseNode):
         except Exception:
             return ""
 
+    def _format_tools_executed(self, tools: List[Dict[str, Any]]) -> str:
+        """Summarize tools executed in this turn."""
+        if not tools:
+            return "None"
+
+        summary = []
+        for tool in tools:
+            name = tool.get("tool_name", "unknown")
+            status = tool.get("status", "unknown")
+            summary.append(f"- {name} ({status})")
+        return "\n".join(summary)
+
+    def _format_chat_history(self, messages: List[Any], limit: int = 6) -> str:
+        """Format the last N messages for the prompt."""
+        if not messages:
+            return "No history."
+
+        recent = messages[-limit:]
+        formatted = []
+        for msg in recent:
+            # Duck typing for custom Message or standard BaseMessage
+            is_bot = getattr(msg, "is_bot", False) or isinstance(msg, AIMessage)
+            content = getattr(msg, "content", str(msg))
+            role = "ASSISTANT" if is_bot else "USER"
+            formatted.append(f"{role}: {content}")
+
+        return "\n".join(formatted)
+
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Route to the correct agent."""
 
@@ -32,21 +60,31 @@ class OrchestratorNode(BaseNode):
         dynamic_info = state.get("dynamic_info", "")
         function_purpose = state.get("function_purpose", "")
 
+        # Get recent tools to detect policy acceptance within the loop
+        tools_executed = state.get("tools_executed", [])
+        recent_activity = self._format_tools_executed(tools_executed)
+
+        # Get Chat History (CRITICAL FIX)
+        messages = state.get("messages", [])
+        chat_history = self._format_chat_history(messages)
+
         system_prompt = self.system_prompt_template.format(
             user_input=user_input,
             dynamic_info=dynamic_info,
-            function_purpose=function_purpose
+            function_purpose=function_purpose,
+            recent_activity=recent_activity,
+            chat_history=chat_history
         )
 
-        messages = [
+        messages_input = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content="Analyze and route now.")
+            HumanMessage(content="Analyze history and input. Route now.")
         ]
 
         try:
             # Force JSON output for reliable routing
             response = self.model.invoke(
-                messages,
+                messages_input,
                 config={"temperature": 0.0},
                 response_format={"type": "json_object"}
             )
