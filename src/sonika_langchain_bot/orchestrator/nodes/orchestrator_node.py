@@ -1,6 +1,6 @@
 """Orchestrator Node - The Brain."""
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 import os
 import json
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -25,6 +25,18 @@ class OrchestratorNode(BaseNode):
         except Exception:
             return ""
 
+    def _format_tools_executed(self, tools: List[Dict[str, Any]]) -> str:
+        """Summarize tools executed in this turn."""
+        if not tools:
+            return "None"
+
+        summary = []
+        for tool in tools:
+            name = tool.get("tool_name", "unknown")
+            status = tool.get("status", "unknown")
+            summary.append(f"- {name} ({status})")
+        return "\n".join(summary)
+
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Route to the correct agent."""
 
@@ -32,10 +44,15 @@ class OrchestratorNode(BaseNode):
         dynamic_info = state.get("dynamic_info", "")
         function_purpose = state.get("function_purpose", "")
 
+        # Get recent tools to detect policy acceptance within the loop
+        tools_executed = state.get("tools_executed", [])
+        recent_activity = self._format_tools_executed(tools_executed)
+
         system_prompt = self.system_prompt_template.format(
             user_input=user_input,
             dynamic_info=dynamic_info,
-            function_purpose=function_purpose
+            function_purpose=function_purpose,
+            recent_activity=recent_activity
         )
 
         messages = [

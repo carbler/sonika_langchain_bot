@@ -2,7 +2,6 @@
 
 from typing import Dict, Any, List, Optional, Callable
 from langgraph.graph import StateGraph, END
-from langchain_core.messages import ToolMessage, AIMessage
 from sonika_langchain_bot.orchestrator.nodes.base_node import BaseNode
 from sonika_langchain_bot.orchestrator.nodes.inner_planner import InnerPlanner
 from sonika_langchain_bot.orchestrator.nodes.inner_executor import InnerExecutor
@@ -24,13 +23,29 @@ class TaskAgentNode(BaseNode):
     ):
         super().__init__(logger)
         self.model = model
-        # Filter tools (everything NOT search)
-        self.tools = [t for t in tools if "search" not in t.name.lower()]
+
+        # Filter tools:
+        # 1. Exclude Search/Knowledge (handled by ResearchAgent)
+        # 2. Exclude Policy Acceptance (handled by PolicyAgent) - This prevents double execution
+        self.tools = [
+            t for t in tools
+            if "search" not in t.name.lower()
+            and "knowledge" not in t.name.lower()
+            and "policy" not in t.name.lower()
+            and "policies" not in t.name.lower()
+        ]
 
         self.planner = InnerPlanner(
             model,
             self.tools,
-            system_prompt="You are a Task Executor. Validate params strictly. If missing, ASK user. If done, provide final answer.",
+            system_prompt=(
+                "You are a Task Executor.\n"
+                "Your job is to execute business actions (Quotes, Reservations, Contact Saving, etc.) following the GLOBAL INSTRUCTIONS strictly.\n"
+                "1. If parameters are missing, ASK the user (One question at a time).\n"
+                "2. If you can calculate a parameter (like dates) from the context, DO IT. Do NOT ask for ISO dates.\n"
+                "3. If the user provides a Name, Email, or Phone -> YOU MUST SAVE IT using the contact tool.\n"
+                "4. Once you have all data, EXECUTE the tool."
+            ),
             logger=logger
         )
         self.executor = InnerExecutor(
@@ -61,51 +76,21 @@ class TaskAgentNode(BaseNode):
     async def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Run the sub-graph."""
         try:
+            initial_tools_count = len(state.get("tools_executed", []))
+
             # Ejecutar subgrafo
             result = await self.subgraph.ainvoke(state)
 
             final_msg = result.get("planner_response")
             content = final_msg.content if final_msg else "Error: No planner response"
 
-            # --- RECONSTRUCCIÓN DE HISTORIAL DE HERRAMIENTAS ---
-            scratchpad = result.get("scratchpad", [])
-            tools_executed_list = []
-            pending_calls = {}
-
-            for msg in scratchpad:
-                if isinstance(msg, AIMessage) and msg.tool_calls:
-                    for call in msg.tool_calls:
-                        call_id = call.get("id")
-                        if call_id:
-                            pending_calls[call_id] = {
-                                "name": call.get("name"),
-                                "args": call.get("args")
-                            }
-                elif isinstance(msg, ToolMessage):
-                    call_id = msg.tool_call_id
-                    call_info = pending_calls.get(call_id, {})
-                    tool_name = call_info.get("name", msg.name or "UnknownTool")
-                    args_val = call_info.get("args", "{}")
-
-                    if isinstance(args_val, dict):
-                        import json
-                        try:
-                            args_str = json.dumps(args_val)
-                        except:
-                            args_str = str(args_val)
-                    else:
-                        args_str = str(args_val)
-
-                    tools_executed_list.append({
-                        "tool_name": tool_name,
-                        "args": args_str,
-                        "output": msg.content,
-                        "status": "success" if "Error" not in str(msg.content) else "failed"
-                    })
+            # Calculate new tools executed
+            final_tools = result.get("tools_executed", [])
+            new_tools = final_tools[initial_tools_count:]
 
             return {
                 "agent_response": content,
-                "tools_executed": tools_executed_list,
+                "tools_executed": new_tools,
                 **self._add_log(state, "TaskAgent finished.")
             }
         except Exception as e:
