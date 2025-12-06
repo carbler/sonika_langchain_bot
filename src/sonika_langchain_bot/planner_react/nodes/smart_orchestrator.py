@@ -26,11 +26,6 @@ class SmartOrchestrator(BaseNode):
         # tool_choice="auto" permite al modelo decidir, pero con nuestro prompt agresivo debería llamar tools
         self.model = model.bind_tools(self.tools) if self.tools else model
         
-        # Log de tools disponibles
-        if self.tools:
-            tool_info = [f"{t.name}" for t in self.tools]
-            logger.info(f"SmartOrchestrator initialized with tools: {tool_info}") if logger else None
-
     def _build_system_prompt(self, dynamic_info: str, function_purpose: str, is_retry: bool = False) -> str:
         """Construye el prompt del sistema - genérico para cualquier negocio."""
         
@@ -116,10 +111,6 @@ Analyze the user's request and call the appropriate tool(s). If no tool is neede
             tool_calls = getattr(response, 'tool_calls', []) or []
             reasoning = response.content or ""
             
-            # Log para debug si no hay tool calls
-            if not tool_calls and self.tools:
-                available = [t.name for t in self.tools]
-                self.logger.warning(f"No tool calls generated. Available tools: {available}. User said: '{user_input[:100]}'")
             
             # Convertir a acciones
             actions = [

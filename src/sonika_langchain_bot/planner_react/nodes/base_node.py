@@ -6,13 +6,20 @@ from datetime import datetime
 import logging
 
 
+class NullLogger:
+    """Logger que no hace nada - evita checks de None en todo el código."""
+    def debug(self, *args, **kwargs): pass
+    def info(self, *args, **kwargs): pass
+    def warning(self, *args, **kwargs): pass
+    def error(self, *args, **kwargs): pass
+    def critical(self, *args, **kwargs): pass
+
+
 class BaseNode(ABC):
     """Clase base para todos los nodos del Planner Bot."""
 
     def __init__(self, logger: Optional[logging.Logger] = None):
-        self.logger = logger or logging.getLogger(__name__)
-        if logger is None:
-            self.logger.addHandler(logging.NullHandler())
+        self.logger = logger or NullLogger()
 
     @abstractmethod
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:

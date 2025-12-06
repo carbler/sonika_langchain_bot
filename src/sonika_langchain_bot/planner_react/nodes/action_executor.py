@@ -264,7 +264,6 @@ class ActionExecutor(BaseNode):
             
             # Verificar que la tool existe
             if tool_name not in self.tools:
-                self.logger.warning(f"Tool '{tool_name}' not found, skipping")
                 execution_results.append({
                     "tool_name": tool_name,
                     "status": "skipped",
@@ -274,7 +273,6 @@ class ActionExecutor(BaseNode):
                 continue
             
             # Ejecutar con retry
-            self.logger.info(f"Executing {tool_name} with params: {params}")
             exec_result = await self._execute_with_retry(tool_name, params, action.get("type", ""))
             
             result_entry = {

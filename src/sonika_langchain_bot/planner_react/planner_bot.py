@@ -11,6 +11,7 @@ from sonika_langchain_bot.planner_react.state import PlannerState
 from sonika_langchain_bot.planner_react.nodes.smart_orchestrator import SmartOrchestrator
 from sonika_langchain_bot.planner_react.nodes.action_executor import ActionExecutor
 from sonika_langchain_bot.planner_react.nodes.conversation_synthesizer import ConversationSynthesizer
+from sonika_langchain_bot.planner_react.nodes.base_node import NullLogger
 
 
 class PlannerBot:
@@ -65,10 +66,8 @@ class PlannerBot:
             on_tool_error: Callback cuando falla una tool
             logger: Logger personalizado
         """
-        # Logger
-        self.logger = logger or logging.getLogger(__name__)
-        if logger is None:
-            self.logger.addHandler(logging.NullHandler())
+        # Logger - usar NullLogger si no se proporciona
+        self.logger = logger or NullLogger()
         
         # Modelo
         self.model = language_model.model
