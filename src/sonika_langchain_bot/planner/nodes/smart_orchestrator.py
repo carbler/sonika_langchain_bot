@@ -91,7 +91,7 @@ class SmartOrchestrator(BaseNode):
         # Construir mensajes para el LLM
         llm_messages = [
             SystemMessage(content=self._build_system_prompt(dynamic_info, function_purpose)),
-            *history[-6:],  # Últimos 6 mensajes de contexto
+            *history,  # Conversación completa para contexto
             HumanMessage(content=user_input)
         ]
         
@@ -124,7 +124,22 @@ class SmartOrchestrator(BaseNode):
                 "conversation_intent": intent
             }
             
-            log_msg = f"Plan generated: {len(actions)} actions, intent: {intent}"
+            # Log detallado
+            log_parts = [f"Intent: {intent}"]
+            if actions:
+                tools_detail = ", ".join(
+                    f"{a['tool_name']}({', '.join(f'{k}={repr(v)[:30]}' for k, v in a['params'].items())})"
+                    for a in actions
+                )
+                log_parts.append(f"Tools: [{tools_detail}]")
+            else:
+                log_parts.append("Tools: [none]")
+            
+            if response.content:
+                short_analysis = response.content[:100] + "..." if len(response.content) > 100 else response.content
+                log_parts.append(f"Analysis: {short_analysis}")
+            
+            log_msg = " | ".join(log_parts)
             
             return {
                 "action_plan": plan_data,

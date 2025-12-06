@@ -2,7 +2,7 @@
 
 from typing import Dict, Any, List, Optional
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from sonika_langchain_bot.planner.nodes.base_node import BaseNode
+from sonika_langchain_bot.planner_react.nodes.base_node import BaseNode
 
 
 class ConversationSynthesizer(BaseNode):
@@ -34,12 +34,11 @@ class ConversationSynthesizer(BaseNode):
             output = result.get("output", "")
             action_type = result.get("action_type", "")
             
-            # Truncar output si es muy largo
-            if len(output) > 500:
-                output = output[:500] + "..."
-            
             if status == "success":
                 summary_parts.append(f"✓ **{tool_name}** executed successfully:\n{output}")
+            elif status == "missing_params":
+                missing = result.get("missing_params", [])
+                summary_parts.append(f"⚠️ **{tool_name}** NOT executed - missing required data: {', '.join(missing)}\nYou MUST ask the user for: {', '.join(missing)}")
             elif status == "failed":
                 summary_parts.append(f"✗ **{tool_name}** failed:\n{output}")
             else:
@@ -55,12 +54,12 @@ class ConversationSynthesizer(BaseNode):
     ) -> str:
         """Construye el prompt del sistema para el sintetizador."""
         
-        prompt = f"""You are a Conversation Synthesizer. Your job is to generate a SINGLE, COHERENT response to the user.
+        prompt = f"""You are a Conversation Synthesizer. Generate a SINGLE, COHERENT response to the user.
 
-## YOUR PERSONALITY & TONE
+## PERSONALITY & TONE
 {personality_tone}
 
-CRITICAL: You MUST adopt this tone in every response. Be natural, warm, and human-like.
+Adopt this tone naturally. Be warm and human-like.
 
 ## BUSINESS CONTEXT
 {function_purpose}
@@ -69,51 +68,22 @@ CRITICAL: You MUST adopt this tone in every response. Be natural, warm, and huma
 {limitations}
 
 ## YOUR TASK
-Based on:
-1. The user's original message
-2. What actions were executed (and their results)
-3. The conversation history
-4. Whether policies need to be requested
-
 Generate ONE response that:
-- Acknowledges what was done (if applicable)
-- Answers the user's question (using tool results if available)
-- Maintains conversational flow
-- Uses the configured personality/tone
-- Is in the SAME LANGUAGE as the user (likely Spanish)
+- Uses tool results naturally (don't say "I searched...", just provide the info)
+- Maintains conversational flow with the history
+- Matches the user's language
+- Follows the personality/tone
 
-## CRITICAL RULES
-
-### Rule 1: Policy Request
-If `requires_policy_acceptance` is TRUE and policies were NOT just accepted:
-- Your response MUST ask the user to accept the privacy policies and terms of use
-- Be polite but clear that this is required to continue
-- Include the policy links if provided in the business context
-
-### Rule 2: Use Tool Results
-If tools were executed successfully:
-- Use their output to answer the user
-- Don't say "I searched and found..." - just provide the information naturally
-- If search returned no results, say you don't have that information
-
-### Rule 3: Contact Data Confirmation
-If contact data was saved:
-- Briefly acknowledge it (e.g., "Perfecto, Erley!" or "Guardé tu información")
-- Don't make it the main focus unless that was the user's only request
-
-### Rule 4: Failed Tools
-If a tool failed:
-- Don't expose technical errors to the user
-- Apologize briefly and offer to try again or help differently
-
-### Rule 5: Chitchat
-If no actions were needed (pure greeting/chitchat):
-- Respond naturally according to your personality
-- Offer to help with something specific
+## RULES
+1. **Policy Request**: If `requires_policy_acceptance` is TRUE, ask user to accept policies politely but clearly
+2. **Tool Results**: Use successful tool outputs to answer. If no results, say you don't have that info
+3. **Contact Saved**: Briefly acknowledge if contact was saved, don't over-focus on it
+4. **Failed Tools**: Don't expose errors. Apologize briefly and offer alternatives
+5. **Missing Parameters**: If a tool has status "missing_params", ask the user for the specific missing information naturally
+6. **Chitchat**: Respond naturally, offer to help with something specific
 
 ## OUTPUT
-Generate ONLY the response text. No JSON, no markdown headers, no explanations.
-Just the natural response to send to the user."""
+Generate ONLY the response text. No JSON, no headers, no explanations."""
 
         return prompt
 
@@ -151,8 +121,9 @@ Just the natural response to send to the user."""
         # Análisis del plan
         requires_policy = action_plan.get("requires_policy_acceptance", False)
         conversation_intent = action_plan.get("conversation_intent", "chitchat")
-        plan_analysis = action_plan.get("analysis", "")
-        detected_contact = action_plan.get("detected_contact_data")
+        plan_reasoning = action_plan.get("reasoning", "")
+        is_retry = action_plan.get("is_retry", False)
+        iteration = action_plan.get("iteration", 0)
         
         # Verificar si las políticas fueron aceptadas en esta ejecución
         policies_just_accepted = any(
@@ -182,13 +153,13 @@ Just the natural response to send to the user."""
             f"## CURRENT CONTEXT\n{dynamic_info}",
             f"## CONVERSATION HISTORY\n{conversation_history}",
             f"## USER'S CURRENT MESSAGE\n{user_input}",
-            f"## ORCHESTRATOR ANALYSIS\n{plan_analysis}",
+            f"## ORCHESTRATOR REASONING\n{plan_reasoning}",
             f"## CONVERSATION INTENT\n{conversation_intent}",
             f"## REQUIRES POLICY ACCEPTANCE\n{'YES - You MUST ask for policy acceptance' if requires_policy else 'NO'}",
         ]
         
-        if detected_contact:
-            context_parts.append(f"## CONTACT DATA DETECTED\n{detected_contact}")
+        if is_retry:
+            context_parts.append(f"## NOTE\nThis is retry attempt #{iteration + 1}. Previous attempts didn't find useful results.")
         
         if execution_results:
             context_parts.append(f"## ACTIONS EXECUTED\n{execution_summary}")
@@ -197,10 +168,19 @@ Just the natural response to send to the user."""
         
         context = "\n\n".join(context_parts)
         
-        # Mensajes para el LLM
+        # Convertir historial a mensajes LangChain
+        conversation_messages = self._convert_messages_to_langchain(messages)
+        
+        # Construir input con contexto de ejecución
+        analysis_input = f"""{context}
+
+Now generate the response to the user:"""
+        
+        # Mensajes para el LLM - incluir conversación real para mejor contexto
         llm_messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=f"{context}\n\nNow generate the response to the user:")
+            *conversation_messages,  # Conversación completa como mensajes reales
+            HumanMessage(content=analysis_input)
         ]
         
         try:
@@ -211,20 +191,16 @@ Just the natural response to send to the user."""
             if final_response.startswith('"') and final_response.endswith('"'):
                 final_response = final_response[1:-1]
             
-            # Log detallado
-            log_parts = [f"Response ({len(final_response)} chars)"]
+            # Log descriptivo
+            log_parts = [f"Generated response ({len(final_response)} chars)"]
             if requires_policy:
-                log_parts.append("📋 Policy request")
+                log_parts.append("📋 Policy request included")
             if policies_just_accepted:
                 log_parts.append("✅ Policies accepted")
             if execution_results:
                 success_tools = [r["tool_name"] for r in execution_results if r.get("status") == "success"]
-                failed_tools = [r["tool_name"] for r in execution_results if r.get("status") == "failed"]
                 if success_tools:
-                    log_parts.append(f"✓ {', '.join(success_tools)}")
-                if failed_tools:
-                    log_parts.append(f"✗ {', '.join(failed_tools)}")
-            log_parts.append(f"Intent: {conversation_intent}")
+                    log_parts.append(f"Using results from: {', '.join(success_tools)}")
             
             return {
                 "final_response": final_response,
@@ -233,13 +209,10 @@ Just the natural response to send to the user."""
             
         except Exception as e:
             self.logger.error(f"Synthesizer error: {e}")
-            import traceback
-            self.logger.error(traceback.format_exc())
             
-            # Respuesta de fallback
             fallback = "Lo siento, tuve un problema procesando tu mensaje. ¿Podrías intentarlo de nuevo?"
             
             return {
                 "final_response": fallback,
-                **self._add_log(f"Synthesizer error, using fallback: {e}")
+                **self._add_log(f"❌ Error: {e} | Using fallback response")
             }
