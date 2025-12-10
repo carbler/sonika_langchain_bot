@@ -105,8 +105,10 @@ Respond ONLY with valid JSON matching this schema:
             }
 
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             if self.logger:
-                self.logger.error(f"Architect failed: {e}")
+                self.logger.error(f"Architect failed: {e}\n{error_details}")
             return {
                 "execution_plan": ["response_node"],
                 "logs": [f"Architect Error: {e}. Fallback to response only."]
