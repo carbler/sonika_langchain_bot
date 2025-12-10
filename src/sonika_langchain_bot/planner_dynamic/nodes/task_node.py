@@ -21,8 +21,13 @@ class TaskNode:
             return {"logs": ["TaskNode: No tools available."]}
 
         user_input = state.get("user_input", "")
-        # Use previous research/context to inform the task
-        context_str = f"User Input: {user_input}\nResearch Results: {state.get('research_results', [])}"
+        tools_executed = state.get("tools_executed", [])
+
+        # Use previous research/context AND executed tools to inform the task
+        context_str = f"""User Input: {user_input}
+Research Results: {state.get('research_results', [])}
+Tools Already Executed in this Turn: {tools_executed}
+"""
 
         # 1. Decide action
         action_plan = await self._plan_action(context_str, state)

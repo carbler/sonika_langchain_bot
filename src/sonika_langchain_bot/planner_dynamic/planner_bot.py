@@ -134,32 +134,30 @@ class PlannerBot:
         # 2. Build Dynamic Graph
         workflow = StateGraph(PlannerState)
 
-        # Add nodes present in the plan
-        # We use a set to avoid duplicates if the architect outputs ["research", "research"] (though we asked for linear)
-        # Actually, let's allow duplicates if we want, but standard StateGraph requires unique node names.
-        # If the plan needs same node twice, we'd need to alias them.
-        # For simplicity, we assume unique node types for now or single pass.
-        # If Architect says ["research", "task"], we add "research_node" and "task_node".
+        # Generate unique node names for each step to allow linear flow even with same types
+        # e.g. ["task_node", "task_node"] -> step_0_task_node -> step_1_task_node
 
-        unique_nodes = set(plan_steps)
-        for node_name in unique_nodes:
-            if node_name in self.node_handlers:
-                workflow.add_node(node_name, self._wrap_async_node(self.node_handlers[node_name]))
+        graph_node_names = []
+        for i, node_type in enumerate(plan_steps):
+            if node_type not in self.node_handlers:
+                continue
 
-        # Connect Edges Sequentially
-        # plan_steps = ["policy_node", "research_node", "response_node"]
-        # policy -> research -> response -> END
+            unique_name = f"step_{i}_{node_type}"
+            graph_node_names.append(unique_name)
 
-        if not plan_steps:
+            # Add node with unique name, pointing to the shared handler
+            workflow.add_node(unique_name, self._wrap_async_node(self.node_handlers[node_type]))
+
+        if not graph_node_names:
              # Fallback
              workflow.add_node("response_node", self._wrap_async_node(self.node_handlers["response_node"]))
              workflow.set_entry_point("response_node")
              workflow.add_edge("response_node", END)
         else:
-            workflow.set_entry_point(plan_steps[0])
-            for i in range(len(plan_steps) - 1):
-                workflow.add_edge(plan_steps[i], plan_steps[i+1])
-            workflow.add_edge(plan_steps[-1], END)
+            workflow.set_entry_point(graph_node_names[0])
+            for i in range(len(graph_node_names) - 1):
+                workflow.add_edge(graph_node_names[i], graph_node_names[i+1])
+            workflow.add_edge(graph_node_names[-1], END)
 
         app = workflow.compile()
 
