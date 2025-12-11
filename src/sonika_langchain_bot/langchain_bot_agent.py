@@ -1,6 +1,7 @@
-from typing import Generator, List, Optional, Dict, Any, TypedDict, Annotated, Callable
+from typing import Generator, List, Optional, Dict, Any, TypedDict, Annotated, Callable, Union, get_origin, get_args
 import asyncio
 import logging
+import inspect
 from pydantic import BaseModel
 from langchain.schema import AIMessage, HumanMessage, BaseMessage
 from langchain_core.messages import ToolMessage
@@ -279,6 +280,96 @@ class LangChainBot:
             self.logger.exception("Traceback completo:")
             self.mcp_client = None
 
+    def _extract_required_params(self, tool) -> Dict[str, List[str]]:
+        """
+        Extrae los parámetros requeridos del schema de una tool.
+        
+        Soporta:
+        - LangChain BaseTool con args_schema (Pydantic v1/v2)
+        - LangChain BaseTool con _run y type hints (Optional detection)
+        - MCP Tools con inputSchema (JSON Schema)
+        - HTTPTool con args_schema dinámico
+        
+        Returns:
+            Dict con 'required' (lista de campos requeridos) y 'all' (todos los campos)
+        """
+        required = []
+        all_params = []
+        
+        try:
+            # Método 1: MCP Tools - inputSchema (JSON Schema format)
+            if hasattr(tool, 'inputSchema') and tool.inputSchema:
+                schema = tool.inputSchema
+                if isinstance(schema, dict):
+                    # JSON Schema: properties contiene todos, required es lista
+                    all_params = list(schema.get('properties', {}).keys())
+                    required = schema.get('required', [])
+                    return {'required': required, 'all': all_params}
+            
+            # Método 2: args_schema (Pydantic model - usado por HTTPTool y otros)
+            if hasattr(tool, 'args_schema') and tool.args_schema:
+                schema = tool.args_schema
+                
+                # Pydantic v2
+                if hasattr(schema, 'model_fields'):
+                    for name, field in schema.model_fields.items():
+                        all_params.append(name)
+                        if field.is_required():
+                            required.append(name)
+                    return {'required': required, 'all': all_params}
+                
+                # Pydantic v1
+                elif hasattr(schema, '__fields__'):
+                    for name, field in schema.__fields__.items():
+                        all_params.append(name)
+                        if field.required:
+                            required.append(name)
+                    return {'required': required, 'all': all_params}
+                
+                # JSON Schema dict (algunos tools lo definen así)
+                elif isinstance(schema, dict):
+                    all_params = list(schema.get('properties', {}).keys())
+                    required = schema.get('required', [])
+                    return {'required': required, 'all': all_params}
+            
+            # Método 3: Inspección del método _run con type hints
+            if hasattr(tool, '_run'):
+                sig = inspect.signature(tool._run)
+                type_hints = {}
+                try:
+                    type_hints = tool._run.__annotations__
+                except Exception:
+                    pass
+                
+                for name, param in sig.parameters.items():
+                    if name in ('self', 'kwargs', 'args'):
+                        continue
+                    
+                    all_params.append(name)
+                    
+                    # Verificar si es Optional en type hints
+                    is_optional = False
+                    if name in type_hints:
+                        hint = type_hints[name]
+                        origin = get_origin(hint)
+                        # Optional[X] es Union[X, None]
+                        if origin is Union:
+                            args = get_args(hint)
+                            if type(None) in args:
+                                is_optional = True
+                    
+                    # Si tiene default value, es opcional
+                    has_default = param.default != inspect.Parameter.empty
+                    
+                    # Es requerido si NO es Optional y NO tiene default
+                    if not is_optional and not has_default:
+                        required.append(name)
+                        
+        except Exception as e:
+            self.logger.warning(f"Could not extract schema for {tool.name}: {e}")
+        
+        return {'required': required, 'all': all_params}
+
     def _extract_token_usage_from_message(self, message: BaseMessage) -> TokenUsage:
         """Extract token usage from a message's metadata."""
         if hasattr(message, 'response_metadata'):
@@ -333,6 +424,74 @@ If the user provides contact information (name, email, phone):
         
         return "\n".join(rules) if rules else ""
 
+    def tool_validator_node(self, state: ChatState) -> ChatState:
+        """
+        Validates tool calls, executing valid ones and returning errors for invalid ones.
+        This allows for partial success and gives the agent detailed feedback for self-correction.
+        """
+        last_message = state["messages"][-1]
+
+        if not (isinstance(last_message, AIMessage) and hasattr(last_message, 'tool_calls') and last_message.tool_calls):
+            # Should not happen if graph is routed correctly
+            return state
+
+        tool_calls = last_message.tool_calls
+        tools_by_name = {tool.name: tool for tool in self.tools}
+        
+        valid_calls = []
+        invalid_call_messages = []
+
+        for tool_call in tool_calls:
+            tool_name = tool_call.get('name')
+            tool_to_check = tools_by_name.get(tool_name)
+            
+            if not tool_to_check:
+                # Agent called a tool that doesn't exist. Treat as invalid.
+                invalid_call_messages.append(
+                    ToolMessage(
+                        content=f"Error: Tool '{tool_name}' not found.",
+                        tool_call_id=tool_call['id']
+                    )
+                )
+                continue
+
+            params_info = self._extract_required_params(tool_to_check)
+            required_params = params_info.get('required', [])
+            provided_args = tool_call.get('args', {})
+            missing_params = []
+
+            for req_param in required_params:
+                if not provided_args.get(req_param):
+                    missing_params.append(req_param)
+
+            if missing_params:
+                # This call is invalid. Generate a specific error message for it.
+                details = ", ".join(f"'{p}'" for p in missing_params)
+                feedback_content = f"Tool call failed validation. Missing required parameters: {details}. You must ask the user for this information before trying again."
+                invalid_call_messages.append(
+                    ToolMessage(
+                        content=feedback_content,
+                        tool_call_id=tool_call['id']
+                    )
+                )
+            else:
+                # This call is valid and can be executed.
+                valid_calls.append(tool_call)
+
+        # Execute the valid calls and collect their results.
+        tool_results = []
+        if valid_calls:
+            # Invoke a ToolNode with a temporary state containing only the valid calls.
+            temp_state = {"messages": [AIMessage(content="", tool_calls=valid_calls)]}
+            tool_node = ToolNode(self.tools)
+            tool_result_state = tool_node.invoke(temp_state)
+            tool_results = tool_result_state.get('messages', [])
+
+        # Combine the successful results and the generated error messages.
+        all_feedback_messages = tool_results + invalid_call_messages
+        
+        return {"messages": all_feedback_messages}
+
     def _create_workflow(self) -> StateGraph:
         """
         Create standard LangGraph workflow.
@@ -375,9 +534,18 @@ If the user provides contact information (name, email, phone):
                 if isinstance(msg, HumanMessage):
                     messages.append({"role": "user", "content": msg.content})
                 elif isinstance(msg, AIMessage):
-                    messages.append({"role": "assistant", "content": msg.content or ""})
+                    if msg.tool_calls:
+                        serialized_msg = {"role": "assistant", "content": msg.content or ""}
+                        serialized_msg['tool_calls'] = msg.tool_calls
+                        messages.append(serialized_msg)
+                    else:
+                        messages.append({"role": "assistant", "content": msg.content or ""})
                 elif isinstance(msg, ToolMessage):
-                    messages.append({"role": "user", "content": f"Tool result: {msg.content}"})
+                    messages.append({
+                        "role": "tool",
+                        "content": msg.content,
+                        "tool_call_id": msg.tool_call_id,
+                    })
             
             try:
                 response = self.model_with_tools.invoke(messages)
@@ -420,8 +588,7 @@ If the user provides contact information (name, email, phone):
         workflow.add_node("agent", agent_node)
         
         if self.tools:
-            tool_node = ToolNode(self.tools)
-            workflow.add_node("tools", tool_node)
+            workflow.add_node("tools", self.tool_validator_node)
         
         workflow.set_entry_point("agent")
         

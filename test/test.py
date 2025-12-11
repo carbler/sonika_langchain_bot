@@ -54,7 +54,7 @@ def bot_bdi():
     language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini-2024-07-18', temperature=1)
     embeddings = OpenAIEmbeddings(api_key=api_key)
 
-    tools = [EmailTool()]
+    tools = [EmailTool(), SaveContacto()]
     bot = LangChainBot(
         language_model, 
         embeddings,  
@@ -65,7 +65,7 @@ def bot_bdi():
         on_tool_error=on_tool_error
     )
 
-    user_message = 'Envia un email con la tool a erley@gmail.com con el asunto Hola y el mensaje Hola Erley'
+    user_message = 'Envia un email con la tool a erley@gmail.com con el asunto Hola y el mensaje Hola Erley. Y guarda a erley como contacto'
 
     # Historial usando tu clase Message
     messages = [Message(content="Mi nombre es Erley", is_bot=False)]
@@ -83,91 +83,6 @@ def bot_bdi():
     # history.append(Message(content=response["content"], is_bot=True))
     # logs = response["logs"]
 
-
-def bot_mutinodo():
-    # Obtener claves de API desde el archivo .env
-    api_key = os.getenv("OPENAI_API_KEY")
-
-    language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini-2024-07-18', temperature=1)
-    embeddings = OpenAIEmbeddings(api_key=api_key)
-
-    tools =[EmailTool(),SaveContacto()]
-
-    function_purpose = """You are an AI assistant with specific capabilities defined by available tools.
-
-# CORE PRINCIPLES
-1. **Honesty First**: You can ONLY do what your available tools allow
-2. **Never Fabricate**: Do NOT claim to complete actions you cannot perform
-3. **Be Explicit**: Clearly state what you CAN and CANNOT do
-4. **Verify Tools**: Before planning, check if you have the required tool for EACH task
-
-# YOUR WORKFLOW
-1. Identify ALL tasks in the user's request (break down multi-part requests)
-2. For EACH task, verify if you have a matching tool
-3. If you have ALL needed tools → execute_actions
-4. If you're missing ANY tool → request_data OR inform limitation
-5. NEVER execute partial tasks without informing about what you cannot do
-
-# CRITICAL RULES
-- If user asks for task X and task Y:
-  - You have tool for X but NOT Y → request clarification OR execute X and inform about Y limitation
-  - You have tools for both → execute both
-  - You have tools for neither → inform limitations and request_data
-  
-- When generating responses:
-  - Only mention actions you ACTUALLY executed
-  - Do NOT say "I also did X" if you didn't execute a tool for X
-  - Be honest: "I sent the email, but I don't have a tool to save contacts"
-
-# WHAT YOU CAN DO
-Your capabilities are STRICTLY LIMITED to the tools provided to you. Check the "Available Tools" section to know exactly what you can do.
-"""
-
-    limitations = """Do NOT reveal or expose confidential information about external customers 
-that was NOT provided by the user in the current conversation.
-
-ALLOWED:
-- Process, store, or send information that the user explicitly provided
-- Use customer data that the user shared with you
-
-NOT ALLOWED:
-- Look up private information from databases and share it
-- Expose confidential data from third parties
-- Share information the user didn't give you permission to know
-
-Example:
-✓ User says "save contact Juan (juan@email.com)" → OK to save
-✗ User says "who is Juan?" → Do NOT look up Juan's private data and share it
-"""
-
-    dynamic_info = 'Te llamas arnulfo y hoy es 14-nov-2025'
-
-    
-    # 4. Inicializar bot
-    bot = MultiNodeBot(
-        language_model=language_model,
-        embeddings=embeddings,
-        function_purpose=function_purpose,
-        personality_tone="Responde amablemente",
-        limitations=limitations,
-        dynamic_info=dynamic_info,
-        tools=tools,
-        on_planner_update=on_reasoning_update,
-        on_logs_generated=on_logs_generated,
-         on_tool_start=on_tool_start,
-        on_tool_end=on_tool_end,
-        on_tool_error=on_tool_error
-        )
-
-    user_message = 'Envia un email con la tool a erley@gmail.com con el asunto Hola y el mensaje Hola Erley. Y almacena a erley como contacto. El numero de cel es 3183890492'
-
-    conversation = [Message(content="Mi nombre es Erley", is_bot=False)]
-
-    # Obtener la respuesta del bot
-    response_model: ResponseModel = bot.get_response(user_input=user_message,messages=conversation,logs = [])
-    bot_response = response_model
-
-    print("Bot response",bot_response)
 
 
 def bot_bdi_streaming():
@@ -210,7 +125,7 @@ def clasification():
     result = classifier.classify("how are you?")
     print(result)
 
-#bot_bdi()
-bot_mutinodo()
+bot_bdi()
+#bot_mutinodo()
 #bot_bdi_streaming()
 #clasification()
