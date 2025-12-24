@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from datetime import datetime
 from dotenv import load_dotenv
 
 # --- CONFIGURACIÓN DE RUTAS ---
@@ -25,7 +26,7 @@ from test_cases import tests_data
 load_dotenv()
 
 # ==========================================
-# TEST RUNNER CON SCORING
+# TEST RUNNER CON SCORING Y REPORTE
 # ==========================================
 
 class UltimateStressTestRunner:
@@ -39,16 +40,35 @@ class UltimateStressTestRunner:
         self.test_results = []
         self.embeddings = OpenAIEmbeddings(api_key=api_key)
 
+        # Configurar directorio de reportes
+        self.report_dir = os.path.join(os.path.dirname(__file__), '..', 'reports')
+        os.makedirs(self.report_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.report_file = os.path.join(self.report_dir, f"report_{timestamp}.txt")
+        self.log_buffer = []
+
+    def log(self, message):
+        """Imprime en consola y guarda en buffer para archivo"""
+        print(message)
+        self.log_buffer.append(message)
+
+    def save_report(self):
+        """Escribe todo el log en el archivo"""
+        with open(self.report_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(self.log_buffer))
+        print(f"\n📄 Reporte guardado en: {self.report_file}")
+
     def build_conversation_history(self, messages_data):
         """Convierte lista de tuplas (content, is_bot) a objetos Message"""
         return [Message(content=msg[0], is_bot=msg[1]) for msg in messages_data]
 
     def run_test(self, test_num, test_name, conversation_history, user_input, validation_fn, max_points=100):
-        print(f"\n{'='*90}")
-        print(f"🧪 TEST #{test_num}: {test_name}")
-        print(f"   💯 Max Score: {max_points} points")
-        print(f"   📜 Conversación previa: {len(conversation_history)} mensajes")
-        print(f"   📥 Input Usuario: '{user_input}'")
+        self.log(f"\n{'='*90}")
+        self.log(f"🧪 TEST #{test_num}: {test_name}")
+        self.log(f"   💯 Max Score: {max_points} points")
+        self.log(f"   📜 Conversación previa: {len(conversation_history)} mensajes")
+        self.log(f"   📥 Input Usuario: '{user_input}'")
 
         try:
             tools = [
@@ -71,21 +91,14 @@ class UltimateStressTestRunner:
                 on_tool_error=lambda x, y: None
             )
 
-            # Cargar conversación previa
             history_messages = self.build_conversation_history(conversation_history)
-
-            # NOTA: PlannerBot.get_response acepta 'messages' como argumento,
-            # no necesitamos llamar a load_conversation_history explícitamente si se pasa en get_response.
-            # Sin embargo, si la implementación interna lo requiere, podemos hacerlo.
-            # En la implementación de referencia:
-            # bot.get_response(user_input, messages=history_messages, logs=[])
 
             start_time = time.time()
             response = bot.get_response(user_input=user_input, logs=[], messages=history_messages)
             execution_time = time.time() - start_time
 
         except Exception as e:
-            print(f"   ❌ CRASH: {e}")
+            self.log(f"   ❌ CRASH: {e}")
             import traceback
             traceback.print_exc()
             self.record_result(test_num, test_name, 0, max_points, f"CRASH: {str(e)}", execution_time=0)
@@ -101,20 +114,20 @@ class UltimateStressTestRunner:
         try:
             score, feedback = validation_fn(adapted_logs, bot_content, conversation_history)
         except Exception as e:
-            print(f"   ❌ Error en validación: {e}")
+            self.log(f"   ❌ Error en validación: {e}")
             score = 0
             feedback = f"Error en validación: {str(e)}"
 
         passed = score >= (max_points * 0.7)  # 70% es passing
         status = "✅ PASSED" if passed else "❌ FAILED"
 
-        print(f"   {status} - Score: {score}/{max_points} ({int(score/max_points*100)}%)")
-        print(f"   ⏱️  Execution Time: {execution_time:.2f}s")
-        print(f"   📊 Feedback: {feedback}")
-        print(f"\n   🔍 DEBUG INFO:")
-        print(f"   🤖 Bot Response: \"{bot_content[:200]}...\"" if len(bot_content) > 200 else f"   🤖 Bot Response: \"{bot_content}\"")
-        print(f"   🔧 Tools Executed: {tool_names if tool_names else '[NINGUNA]'}")
-        print(f"{'='*90}")
+        self.log(f"   {status} - Score: {score}/{max_points} ({int(score/max_points*100)}%)")
+        self.log(f"   ⏱️  Execution Time: {execution_time:.2f}s")
+        self.log(f"   📊 Feedback: {feedback}")
+        self.log(f"\n   🔍 DEBUG INFO:")
+        self.log(f"   🤖 Bot Response: \"{bot_content[:200]}...\"" if len(bot_content) > 200 else f"   🤖 Bot Response: \"{bot_content}\"")
+        self.log(f"   🔧 Tools Executed: {tool_names if tool_names else '[NINGUNA]'}")
+        self.log(f"{'='*90}")
 
         self.record_result(test_num, test_name, score, max_points, feedback, execution_time)
 
@@ -132,15 +145,17 @@ class UltimateStressTestRunner:
         })
 
     def print_final_report(self):
-        print(f"\n\n{'='*90}")
-        print(f"📈 REPORTE FINAL")
-        print(f"{'='*90}")
-        print(f"Total Score: {self.total_score}/{self.max_score} ({int(self.total_score/self.max_score*100)}%)")
-        print(f"\nDetalle por Test:")
+        self.log(f"\n\n{'='*90}")
+        self.log(f"📈 REPORTE FINAL")
+        self.log(f"{'='*90}")
+        self.log(f"Total Score: {self.total_score}/{self.max_score} ({int(self.total_score/self.max_score*100)}%)")
+        self.log(f"\nDetalle por Test:")
         for result in self.test_results:
             emoji = "✅" if result['percentage'] >= 70 else "❌"
-            print(f"{emoji} Test #{result['test_num']}: {result['score']}/{result['max_score']} ({result['percentage']}%) - {result['name']}")
-        print(f"{'='*90}\n")
+            self.log(f"{emoji} Test #{result['test_num']}: {result['score']}/{result['max_score']} ({result['percentage']}%) - {result['name']}")
+        self.log(f"{'='*90}\n")
+
+        self.save_report()
 
 if __name__ == "__main__":
     print("🚀 INICIANDO ULTIMATE STRESS TEST DE NEOFIN AI...")
