@@ -54,6 +54,11 @@ AVAILABLE_BOTS = {
         "name": "TaskerBot",
         "module": "sonika_langchain_bot.tasker",
         "class": "TaskerBot"
+    },
+    "6": {
+        "name": "LangChainBot",
+        "module": "sonika_langchain_bot.langchain_bot_agent",
+        "class": "LangChainBot"
     }
 }
 
@@ -76,6 +81,8 @@ class UltimateStressTestRunner:
         self.max_score = 0
         self.test_results = []
         self.embeddings = OpenAIEmbeddings(api_key=api_key)
+        self.start_time = None
+        self.end_time = None
 
         # Configurar directorio de reportes
         self.report_dir = os.path.join(os.path.dirname(__file__), '..', 'reports')
@@ -105,6 +112,19 @@ class UltimateStressTestRunner:
         """Convierte lista de tuplas (content, is_bot) a objetos Message"""
         return [Message(content=msg[0], is_bot=msg[1]) for msg in messages_data]
 
+    def run_all_tests(self):
+        self.start_time = time.time()
+        for t_num, t_name, t_hist, t_input, t_val in tests_data:
+            self.run_test(
+                test_num=t_num,
+                test_name=t_name,
+                conversation_history=t_hist,
+                user_input=t_input,
+                validation_fn=t_val
+            )
+        self.end_time = time.time()
+        self.print_final_report()
+
     def run_test(self, test_num, test_name, conversation_history, user_input, validation_fn, max_points=100):
         self.log(f"\n{'='*90}")
         self.log(f"🧪 TEST #{test_num}: {test_name}")
@@ -120,21 +140,33 @@ class UltimateStressTestRunner:
                 ScheduleCallback(), AdjustCreditLimit()
             ]
 
-            # Instanciación dinámica del Bot
-            # Asumimos que todos los bots siguen la misma firma de inicialización
-            # Si hay diferencias, habría que añadir lógica específica por bot_type
-            bot = self.bot_class(
-                embeddings=self.embeddings,
-                language_model=self.llm,
-                function_purpose=FUNCTION_PURPOSE,
-                personality_tone=PERSONALITY_TONE,
-                limitations=LIMITATIONS,
-                dynamic_info='',
-                tools=tools,
-                on_tool_start=lambda x, y: None,
-                on_tool_end=lambda x, y: None,
-                on_tool_error=lambda x, y: None
-            )
+            # Instanciación dinámica
+            if self.bot_name == "LangChainBot":
+                # Adaptador para LangChainBot que espera 'instructions' concatenadas
+                combined_instructions = f"{FUNCTION_PURPOSE}\n\n{PERSONALITY_TONE}\n\n{LIMITATIONS}"
+                bot = self.bot_class(
+                    language_model=self.llm,
+                    embeddings=self.embeddings,
+                    instructions=combined_instructions,
+                    tools=tools,
+                    on_tool_start=lambda x, y: None,
+                    on_tool_end=lambda x, y: None,
+                    on_tool_error=lambda x, y: None
+                )
+            else:
+                # Estándar para otros bots
+                bot = self.bot_class(
+                    embeddings=self.embeddings,
+                    language_model=self.llm,
+                    function_purpose=FUNCTION_PURPOSE,
+                    personality_tone=PERSONALITY_TONE,
+                    limitations=LIMITATIONS,
+                    dynamic_info='',
+                    tools=tools,
+                    on_tool_start=lambda x, y: None,
+                    on_tool_end=lambda x, y: None,
+                    on_tool_error=lambda x, y: None
+                )
 
             history_messages = self.build_conversation_history(conversation_history)
 
@@ -190,10 +222,14 @@ class UltimateStressTestRunner:
         })
 
     def print_final_report(self):
+        duration = self.end_time - self.start_time if self.end_time else 0
+        minutes, seconds = divmod(duration, 60)
+
         self.log(f"\n\n{'='*90}")
         self.log(f"📈 REPORTE FINAL")
         self.log(f"🤖 Bot: {self.bot_name}")
         self.log(f"🧠 Model: {self.model_name}")
+        self.log(f"⏱️  Total Duration: {int(minutes)}m {int(seconds)}s")
         self.log(f"{'='*90}")
         self.log(f"Total Score: {self.total_score}/{self.max_score} ({int(self.total_score/self.max_score*100)}%)")
         self.log(f"\nDetalle por Test:")
@@ -242,6 +278,7 @@ if __name__ == "__main__":
             model_name = "gpt-4o-mini"
 
         runner = UltimateStressTestRunner(bot_class, bot_name, model_name)
+        runner.run_all_tests()
 
     except ValueError as e:
         print(f"❌ Error de configuración: {e}")
@@ -249,16 +286,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n\n🚫 Ejecución cancelada por el usuario.")
         sys.exit(0)
-
-    # Ejecutar Loop de Pruebas
-    for t_num, t_name, t_hist, t_input, t_val in tests_data:
-        runner.run_test(
-            test_num=t_num,
-            test_name=t_name,
-            conversation_history=t_hist,
-            user_input=t_input,
-            validation_fn=t_val
-        )
-
-    # Imprimir Reporte
-    runner.print_final_report()
