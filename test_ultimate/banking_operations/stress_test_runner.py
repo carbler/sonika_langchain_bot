@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import importlib
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -10,7 +11,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 from sonika_langchain_bot.langchain_models import OpenAILanguageModel
 from sonika_langchain_bot.langchain_bot_agent import Message
-from sonika_langchain_bot.planner_react import PlannerBot
 from langchain_openai import OpenAIEmbeddings
 
 # Importar componentes locales
@@ -26,15 +26,52 @@ from test_cases import tests_data
 load_dotenv()
 
 # ==========================================
+# CONFIGURACIÓN DE BOTS DISPONIBLES
+# ==========================================
+
+AVAILABLE_BOTS = {
+    "1": {
+        "name": "PlannerBot (React)",
+        "module": "sonika_langchain_bot.planner_react",
+        "class": "PlannerBot"
+    },
+    "2": {
+        "name": "PlannerBot (Planner)",
+        "module": "sonika_langchain_bot.planner",
+        "class": "PlannerBot"
+    },
+    "3": {
+        "name": "OrchestratorBot",
+        "module": "sonika_langchain_bot.orchestrator",
+        "class": "OrchestratorBot"
+    },
+    "4": {
+        "name": "MultiNodeBot",
+        "module": "sonika_langchain_bot.bot",
+        "class": "MultiNodeBot"
+    },
+    "5": {
+        "name": "TaskerBot",
+        "module": "sonika_langchain_bot.tasker",
+        "class": "TaskerBot"
+    }
+}
+
+# ==========================================
 # TEST RUNNER CON SCORING Y REPORTE
 # ==========================================
 
 class UltimateStressTestRunner:
-    def __init__(self):
+    def __init__(self, bot_class, bot_name, model_name):
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("❌ OPENAI_API_KEY no encontrada")
-        self.llm = OpenAILanguageModel(api_key, model_name='gpt-4o-mini', temperature=0)
+
+        self.bot_class = bot_class
+        self.bot_name = bot_name
+        self.model_name = model_name
+        self.llm = OpenAILanguageModel(api_key, model_name=model_name, temperature=0)
+
         self.total_score = 0
         self.max_score = 0
         self.test_results = []
@@ -44,8 +81,13 @@ class UltimateStressTestRunner:
         self.report_dir = os.path.join(os.path.dirname(__file__), '..', 'reports')
         os.makedirs(self.report_dir, exist_ok=True)
 
+        # Nombre del archivo dinámico
+        safe_bot_name = self.bot_name.replace(" ", "_").replace("(", "").replace(")", "")
+        safe_model_name = self.model_name.replace(":", "-")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.report_file = os.path.join(self.report_dir, f"report_{timestamp}.txt")
+
+        filename = f"report_{safe_bot_name}_{safe_model_name}_{timestamp}.txt"
+        self.report_file = os.path.join(self.report_dir, filename)
         self.log_buffer = []
 
     def log(self, message):
@@ -78,7 +120,10 @@ class UltimateStressTestRunner:
                 ScheduleCallback(), AdjustCreditLimit()
             ]
 
-            bot = PlannerBot(
+            # Instanciación dinámica del Bot
+            # Asumimos que todos los bots siguen la misma firma de inicialización
+            # Si hay diferencias, habría que añadir lógica específica por bot_type
+            bot = self.bot_class(
                 embeddings=self.embeddings,
                 language_model=self.llm,
                 function_purpose=FUNCTION_PURPOSE,
@@ -147,6 +192,8 @@ class UltimateStressTestRunner:
     def print_final_report(self):
         self.log(f"\n\n{'='*90}")
         self.log(f"📈 REPORTE FINAL")
+        self.log(f"🤖 Bot: {self.bot_name}")
+        self.log(f"🧠 Model: {self.model_name}")
         self.log(f"{'='*90}")
         self.log(f"Total Score: {self.total_score}/{self.max_score} ({int(self.total_score/self.max_score*100)}%)")
         self.log(f"\nDetalle por Test:")
@@ -157,16 +204,53 @@ class UltimateStressTestRunner:
 
         self.save_report()
 
+def select_bot():
+    print("\n🤖 SELECCIONE EL BOT A PROBAR:")
+    for key, bot_info in AVAILABLE_BOTS.items():
+        print(f"  [{key}] {bot_info['name']}")
+
+    choice = input("\nOpción (default 1): ").strip()
+    if not choice:
+        choice = "1"
+
+    if choice not in AVAILABLE_BOTS:
+        print("❌ Opción inválida. Usando default (1).")
+        choice = "1"
+
+    selected = AVAILABLE_BOTS[choice]
+
+    try:
+        module = importlib.import_module(selected["module"])
+        bot_class = getattr(module, selected["class"])
+        return bot_class, selected["name"]
+    except ImportError as e:
+        print(f"❌ Error importando {selected['name']}: {e}")
+        sys.exit(1)
+    except AttributeError:
+        print(f"❌ Clase {selected['class']} no encontrada en {selected['module']}")
+        sys.exit(1)
+
 if __name__ == "__main__":
     print("🚀 INICIANDO ULTIMATE STRESS TEST DE NEOFIN AI...")
 
+    # Selección interactiva
     try:
-        runner = UltimateStressTestRunner()
+        bot_class, bot_name = select_bot()
+
+        model_name = input("\n🧠 Ingrese nombre del modelo (default: gpt-4o-mini): ").strip()
+        if not model_name:
+            model_name = "gpt-4o-mini"
+
+        runner = UltimateStressTestRunner(bot_class, bot_name, model_name)
+
     except ValueError as e:
         print(f"❌ Error de configuración: {e}")
         sys.exit(1)
+    except KeyboardInterrupt:
+        print("\n\n🚫 Ejecución cancelada por el usuario.")
+        sys.exit(0)
 
-    # Ejecutar Loop de Pruebas importado de test_cases
+    # Ejecutar Loop de Pruebas
     for t_num, t_name, t_hist, t_input, t_val in tests_data:
         runner.run_test(
             test_num=t_num,
