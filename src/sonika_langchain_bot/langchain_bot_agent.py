@@ -1,4 +1,4 @@
-from typing import Generator, List, Optional, Dict, Any, TypedDict, Annotated, Callable, Union, get_origin, get_args
+from typing import List, Optional, Dict, Any, TypedDict, Annotated, Callable, Union, get_origin, get_args
 import asyncio
 import logging
 import inspect
@@ -14,30 +14,10 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_community.callbacks.manager import get_openai_callback
 
-# Import your existing interfaces
-from sonika_langchain_bot.langchain_class import (
-    FileProcessorInterface, 
-    IEmbeddings, 
-    ILanguageModel, 
-    Message, 
-)
+from sonika_langchain_bot.langchain_class import ILanguageModel, Message
 
-# ============= TOKEN USAGE MODEL =============
 
-class TokenUsage(BaseModel):
-    """Token usage tracking."""
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    total_tokens: int = 0
-    
-    def add(self, other: 'TokenUsage') -> 'TokenUsage':
-        """Add another TokenUsage to this one."""
-        return TokenUsage(
-            prompt_tokens=self.prompt_tokens + other.prompt_tokens,
-            completion_tokens=self.completion_tokens + other.completion_tokens,
-            total_tokens=self.total_tokens + other.total_tokens
-        )
-
+# ============= STATE DEFINITION =============
 
 class ChatState(TypedDict):
     """
@@ -45,12 +25,10 @@ class ChatState(TypedDict):
     
     Attributes:
         messages: List of conversation messages with automatic message handling
-        context: Contextual information from processed files
         logs: Historical logs for context
         token_usage: Accumulated token usage across all model invocations
     """
     messages: Annotated[List[BaseMessage], add_messages]
-    context: str
     logs: List[str]
     token_usage: Dict[str, int]
 
@@ -69,14 +47,6 @@ class _InternalToolLogger(BaseCallbackHandler):
                  on_start: Optional[Callable[[str, str], None]] = None,
                  on_end: Optional[Callable[[str, str], None]] = None,
                  on_error: Optional[Callable[[str, str], None]] = None):
-        """
-        Initialize the internal tool logger.
-        
-        Args:
-            on_start: Optional callback function called when a tool starts execution
-            on_end: Optional callback function called when a tool completes successfully
-            on_error: Optional callback function called when a tool encounters an error
-        """
         super().__init__()
         self.on_start_callback = on_start
         self.on_end_callback = on_end
@@ -91,7 +61,6 @@ class _InternalToolLogger(BaseCallbackHandler):
     
     def on_llm_end(self, response, **kwargs) -> None:
         """Called when LLM finishes processing."""
-        # Capturar si hay tool_calls en la respuesta
         if hasattr(response, 'generations') and response.generations:
             for generation in response.generations:
                 if hasattr(generation[0], 'message') and hasattr(generation[0].message, 'tool_calls'):
@@ -101,7 +70,6 @@ class _InternalToolLogger(BaseCallbackHandler):
                         self.execution_logs.append(f"[AGENT] Decided to call tools: {', '.join(tool_names)}")
                         return
         
-        # Si no hay tool calls, es una respuesta directa
         self.execution_logs.append("[AGENT] Generated response")
     
     def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs) -> None:
@@ -116,7 +84,7 @@ class _InternalToolLogger(BaseCallbackHandler):
         })
         
         self.execution_logs.append(f"[TOOL] Executing {tool_name}")
-        self.execution_logs.append(f"[TOOL] Input: {input_str[:100]}...")  # Primeros 100 chars
+        self.execution_logs.append(f"[TOOL] Input: {input_str[:100]}...")
         
         if self.on_start_callback:
             try:
@@ -140,7 +108,7 @@ class _InternalToolLogger(BaseCallbackHandler):
             self.tool_executions[-1]["output"] = output_str
         
         self.execution_logs.append(f"[TOOL] {tool_name} completed successfully")
-        self.execution_logs.append(f"[TOOL] Output: {output_str[:100]}...")  # Primeros 100 chars
+        self.execution_logs.append(f"[TOOL] Output: {output_str[:100]}...")
         
         if self.on_end_callback:
             try:
@@ -183,16 +151,13 @@ class LangChainBot:
         - Native tool calling (no manual parsing)
         - MCP (Model Context Protocol) support
         - Complete token usage tracking across all model invocations
-        - File processing with vector search
         - Thread-based conversation persistence
-        - Streaming responses
         - Tool execution callbacks for real-time monitoring
         - Backward compatibility with legacy APIs
     """
 
     def __init__(self, 
-                 language_model: ILanguageModel, 
-                 embeddings: IEmbeddings, 
+                 language_model: ILanguageModel,
                  instructions: str, 
                  tools: Optional[List[BaseTool]] = None,
                  mcp_servers: Optional[Dict[str, Any]] = None,
@@ -208,7 +173,6 @@ class LangChainBot:
 
         Args:
             language_model (ILanguageModel): The language model to use for generation
-            embeddings (IEmbeddings): Embedding model for file processing and context retrieval
             instructions (str): System instructions that will be modernized automatically
             tools (List[BaseTool], optional): Traditional LangChain tools to bind to the model
             mcp_servers (Dict[str, Any], optional): MCP server configurations for dynamic tool loading
@@ -223,47 +187,34 @@ class LangChainBot:
             on_tool_error (Callable[[str, str], None], optional): Callback when a tool fails.
                 Receives (tool_name: str, error_message: str)
         """
-        # Configure logger (silent by default if not provided)
         self.logger = logger or logging.getLogger(__name__)
         if logger is None:
             self.logger.addHandler(logging.NullHandler())
         
-        # Core components
         self.language_model = language_model
-        self.embeddings = embeddings
         self.instructions = instructions
         
-        # Limits
         self.max_messages = max_messages
         self.max_logs = max_logs
         
-        # Backward compatibility attributes
         self.chat_history: List[BaseMessage] = []
-        self.vector_store = None
         
-        # Tool configuration
         self.tools = tools or []
         self.mcp_client = None
         
-        # Tool execution callbacks
         self.on_tool_start = on_tool_start
         self.on_tool_end = on_tool_end
         self.on_tool_error = on_tool_error
         
-        # Initialize MCP servers if provided
         if mcp_servers:
             self._initialize_mcp(mcp_servers)
         
-        # Configure persistence layer
         self.checkpointer = MemorySaver() if use_checkpointer else None
         
-        # Prepare model with bound tools for native function calling
         self.model_with_tools = self.language_model.model.bind_tools(self.tools) if self.tools else self.language_model.model
         
-        # Create the LangGraph workflow
         self.graph = self._create_workflow()
         
-        # Legacy compatibility attributes (maintained for API compatibility)
         self.conversation = None
         self.agent_executor = None
 
@@ -296,20 +247,16 @@ class LangChainBot:
         all_params = []
         
         try:
-            # Método 1: MCP Tools - inputSchema (JSON Schema format)
             if hasattr(tool, 'inputSchema') and tool.inputSchema:
                 schema = tool.inputSchema
                 if isinstance(schema, dict):
-                    # JSON Schema: properties contiene todos, required es lista
                     all_params = list(schema.get('properties', {}).keys())
                     required = schema.get('required', [])
                     return {'required': required, 'all': all_params}
             
-            # Método 2: args_schema (Pydantic model - usado por HTTPTool y otros)
             if hasattr(tool, 'args_schema') and tool.args_schema:
                 schema = tool.args_schema
                 
-                # Pydantic v2
                 if hasattr(schema, 'model_fields'):
                     for name, field in schema.model_fields.items():
                         all_params.append(name)
@@ -317,7 +264,6 @@ class LangChainBot:
                             required.append(name)
                     return {'required': required, 'all': all_params}
                 
-                # Pydantic v1
                 elif hasattr(schema, '__fields__'):
                     for name, field in schema.__fields__.items():
                         all_params.append(name)
@@ -325,13 +271,11 @@ class LangChainBot:
                             required.append(name)
                     return {'required': required, 'all': all_params}
                 
-                # JSON Schema dict (algunos tools lo definen así)
                 elif isinstance(schema, dict):
                     all_params = list(schema.get('properties', {}).keys())
                     required = schema.get('required', [])
                     return {'required': required, 'all': all_params}
             
-            # Método 3: Inspección del método _run con type hints
             if hasattr(tool, '_run'):
                 sig = inspect.signature(tool._run)
                 type_hints = {}
@@ -346,21 +290,17 @@ class LangChainBot:
                     
                     all_params.append(name)
                     
-                    # Verificar si es Optional en type hints
                     is_optional = False
                     if name in type_hints:
                         hint = type_hints[name]
                         origin = get_origin(hint)
-                        # Optional[X] es Union[X, None]
                         if origin is Union:
                             args = get_args(hint)
                             if type(None) in args:
                                 is_optional = True
                     
-                    # Si tiene default value, es opcional
                     has_default = param.default != inspect.Parameter.empty
                     
-                    # Es requerido si NO es Optional y NO tiene default
                     if not is_optional and not has_default:
                         required.append(name)
                         
@@ -368,17 +308,6 @@ class LangChainBot:
             self.logger.warning(f"Could not extract schema for {tool.name}: {e}")
         
         return {'required': required, 'all': all_params}
-
-    def _extract_token_usage_from_message(self, message: BaseMessage) -> TokenUsage:
-        """Extract token usage from a message's metadata."""
-        if hasattr(message, 'response_metadata'):
-            token_data = message.response_metadata.get('token_usage', {})
-            return TokenUsage(
-                prompt_tokens=token_data.get('prompt_tokens', 0),
-                completion_tokens=token_data.get('completion_tokens', 0),
-                total_tokens=token_data.get('total_tokens', 0)
-            )
-        return TokenUsage()
 
     def _build_conditional_rules(self) -> str:
         """Build conditional rules based on available tools."""
@@ -388,7 +317,6 @@ class LangChainBot:
         tool_names = {tool.name for tool in self.tools}
         rules = []
         
-        # Rule 1: CORPORATE RULE - search_knowledge_documents
         if 'search_knowledge_documents' in tool_names:
             rules.append("""
 ## CORPORATE RULE — MANDATORY USE OF `search_knowledge_documents`
@@ -398,7 +326,6 @@ If the user's query might be answered by internal documents:
 - Never invent information if it might exist in documents
 """)
         
-        # Rule 2: ASK BEFORE EXECUTING POLICY TOOL
         if 'accept_policies' in tool_names:
             rules.append("""
 ## POLICY ACCEPTANCE HANDLING
@@ -411,7 +338,6 @@ If the user's query might be answered by internal documents:
 - This rule is applied only once: after successfully executing `accept_policies`, NEVER ask for acceptance again.
 """)
         
-        # Rule 3: AUTOMATIC CONTACT UPDATE
         if 'create_or_update_contact' in tool_names:
             rules.append("""
 ## AUTOMATIC CONTACT UPDATE
@@ -431,7 +357,6 @@ If the user provides contact information (name, email, phone):
         last_message = state["messages"][-1]
 
         if not (isinstance(last_message, AIMessage) and hasattr(last_message, 'tool_calls') and last_message.tool_calls):
-            # Should not happen if graph is routed correctly
             return state
 
         tool_calls = last_message.tool_calls
@@ -445,7 +370,6 @@ If the user provides contact information (name, email, phone):
             tool_to_check = tools_by_name.get(tool_name)
             
             if not tool_to_check:
-                # Agent called a tool that doesn't exist. Treat as invalid.
                 invalid_call_messages.append(
                     ToolMessage(
                         content=f"Error: Tool '{tool_name}' not found.",
@@ -464,7 +388,6 @@ If the user provides contact information (name, email, phone):
                     missing_params.append(req_param)
 
             if missing_params:
-                # This call is invalid. Generate a specific error message for it.
                 details = ", ".join(f"'{p}'" for p in missing_params)
                 feedback_content = f"Tool call failed validation. Missing required parameters: {details}. You must ask the user for this information before trying again."
                 invalid_call_messages.append(
@@ -474,19 +397,15 @@ If the user provides contact information (name, email, phone):
                     )
                 )
             else:
-                # This call is valid and can be executed.
                 valid_calls.append(tool_call)
 
-        # Execute the valid calls and collect their results.
         tool_results = []
         if valid_calls:
-            # Invoke a ToolNode with a temporary state containing only the valid calls.
             temp_state = {"messages": [AIMessage(content="", tool_calls=valid_calls)]}
             tool_node = ToolNode(self.tools)
-            tool_result_state = tool_node.invoke(temp_state)
+            tool_result_state = asyncio.run(tool_node.ainvoke(temp_state))
             tool_results = tool_result_state.get('messages', [])
 
-        # Combine the successful results and the generated error messages.
         all_feedback_messages = tool_results + invalid_call_messages
         
         return {"messages": all_feedback_messages}
@@ -510,24 +429,20 @@ If the user provides contact information (name, email, phone):
             if not last_user_message:
                 return state
             
-            context = self._get_context(last_user_message)
-            
             system_content = self.instructions
             
-            # Add conditional rules based on available tools
             conditional_rules = self._build_conditional_rules()
             if conditional_rules:
                 system_content += f"\n\n{conditional_rules}"
             
-            if context:
-                system_content += f"\n\nContext from uploaded files:\n{context}"
-            
-            # Add logs context if available
             if state.get("logs"):
                 logs_context = "\n".join(state["logs"][-self.max_logs:])
                 system_content += f"\n\nRecent logs:\n{logs_context}"
             
             messages = [{"role": "system", "content": system_content}]
+            
+            # --- MODIFICACIÓN 1: Flag para detectar estado ---
+            is_post_tool_step = False 
             
             for msg in state["messages"]:
                 if isinstance(msg, HumanMessage):
@@ -545,34 +460,41 @@ If the user provides contact information (name, email, phone):
                         "content": msg.content,
                         "tool_call_id": msg.tool_call_id,
                     })
+                    # --- MODIFICACIÓN 2: Detectamos ejecución de tool ---
+                    is_post_tool_step = True
             
+            # --- MODIFICACIÓN 3: Inyección de Meta-Prompt (Sandwich) ---
+            # Esto es lo que soluciona los tests sin cambiar tu lógica base.
+            if is_post_tool_step:
+                # El modelo ya tiene datos. Le recordamos mirar las reglas de formato/salida.
+                meta_prompt = """
+[SYSTEM REMINDER]
+You have received data from a tool. Before generating your final response, REVIEW your initial System Instructions.
+Ensure strict adherence to:
+1. Defined Tone & Identity rules.
+2. Output Formatting requirements (JSON, Footers, Dates).
+3. Safety protocols based on the tool's output.
+"""
+                messages.append({"role": "system", "content": meta_prompt})
+            else:
+                # El modelo va a planificar. Le recordamos mirar las reglas de overrides/seguridad.
+                meta_prompt = """
+[SYSTEM REMINDER]
+Before calling a tool or responding, REVIEW your System Instructions for:
+1. Explicit Override Keywords (that forbid tool use).
+2. Missing Information requirements (ask before acting).
+3. User Sentiment protocols.
+"""
+                messages.append({"role": "system", "content": meta_prompt})
+
             try:
                 response = self.model_with_tools.invoke(messages)
-                
-                # Extract token usage
-                tokens = self._extract_token_usage_from_message(response)
-                current_tokens = state.get("token_usage", {})
-                new_tokens = {
-                    "prompt_tokens": current_tokens.get("prompt_tokens", 0) + tokens.prompt_tokens,
-                    "completion_tokens": current_tokens.get("completion_tokens", 0) + tokens.completion_tokens,
-                    "total_tokens": current_tokens.get("total_tokens", 0) + tokens.total_tokens
-                }
-                
-                return {
-                    **state,
-                    "context": context,
-                    "messages": [response],
-                    "token_usage": new_tokens
-                }
+                return {"messages": [response]}
             except Exception as e:
                 self.logger.error(f"Error en agent_node: {e}")
                 self.logger.exception("Traceback completo:")
                 fallback_response = AIMessage(content="I apologize, but I encountered an error processing your request.")
-                return {
-                    **state,
-                    "context": context,
-                    "messages": [fallback_response]
-                }
+                return {"messages": [fallback_response]}
 
         def should_continue(state: ChatState) -> str:
             """Determine if tools should be executed."""
@@ -662,55 +584,45 @@ If the user provides contact information (name, email, phone):
         Returns:
             dict: Structured response with content, logs, tools_executed, and token_usage
         """
-        # Convert Message to BaseMessage
         base_messages = self._convert_message_to_base_message(messages)
         
-        # Limit messages and logs
         limited_messages = self._limit_messages(base_messages)
         limited_logs = self._limit_logs(logs)
         
-        # Crear el tool_logger para rastrear todo
         tool_logger = _InternalToolLogger(
             on_start=self.on_tool_start,
             on_end=self.on_tool_end,
             on_error=self.on_tool_error
         )
         
-        # Log del mensaje entrante
         tool_logger.execution_logs.append(f"[USER] {user_input}")
         
         initial_state = {
             "messages": limited_messages + [HumanMessage(content=user_input)],
-            "context": "",
             "logs": limited_logs,
             "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         }
         
         config = {"callbacks": [tool_logger]}
         
-        # Usar get_openai_callback para trackear tokens
         with get_openai_callback() as cb:
             result = asyncio.run(self.graph.ainvoke(initial_state, config=config))
             
-            # Actualizar token_usage con los datos del callback
             result["token_usage"] = {
                 "prompt_tokens": cb.prompt_tokens,
                 "completion_tokens": cb.completion_tokens,
                 "total_tokens": cb.total_tokens
             }
         
-        # Extract final response
         final_response = ""
         for msg in reversed(result["messages"]):
             if isinstance(msg, AIMessage) and msg.content:
                 final_response = msg.content
                 break
         
-        # Log de la respuesta final
         if final_response:
             tool_logger.execution_logs.append(f"[BOT] {final_response}")
         
-        # Combine old logs with new logs
         new_logs = limited_logs + tool_logger.execution_logs
         
         return {
@@ -719,46 +631,6 @@ If the user provides contact information (name, email, phone):
             "tools_executed": tool_logger.tool_executions,
             "token_usage": result["token_usage"]
         }
-
-    def get_response_stream(self, user_input: str) -> Generator[str, None, None]:
-        """
-        Generate a streaming response for real-time user interaction.
-        
-        Args:
-            user_input (str): The user's message or query
-            
-        Yields:
-            str: Response chunks as they are generated
-        """
-        initial_state = {
-            "messages": self.chat_history + [HumanMessage(content=user_input)],
-            "context": "",
-            "logs": [],
-            "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-        }
-        
-        config = {}
-        tool_logger = _InternalToolLogger(
-            on_start=self.on_tool_start,
-            on_end=self.on_tool_end,
-            on_error=self.on_tool_error
-        )
-        config["callbacks"] = [tool_logger]
-        
-        accumulated_response = ""
-        
-        for chunk in self.graph.stream(initial_state, config=config):
-            if "agent" in chunk:
-                for message in chunk["agent"]["messages"]:
-                    if isinstance(message, AIMessage) and message.content:
-                        accumulated_response = message.content
-                        yield message.content
-        
-        if accumulated_response:
-            self.chat_history.extend([
-                HumanMessage(content=user_input),
-                AIMessage(content=accumulated_response)
-            ])
 
     def load_conversation_history(self, messages: List[Message]):
         """Load conversation history from Django model instances."""
@@ -769,24 +641,9 @@ If the user provides contact information (name, email, phone):
         self.chat_history.append(HumanMessage(content=user_message))
         self.chat_history.append(AIMessage(content=bot_response))
 
-    def process_file(self, file: FileProcessorInterface):
-        """Process and index a file for contextual retrieval."""
-        document = file.getText()
-        text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-        texts = text_splitter.split_documents(document)
-
-        if self.vector_store is None:
-            self.vector_store = FAISS.from_texts(
-                [doc.page_content for doc in texts], 
-                self.embeddings
-            )
-        else:
-            self.vector_store.add_texts([doc.page_content for doc in texts])
-
     def clear_memory(self):
-        """Clear conversation history and processed file context."""
+        """Clear conversation history."""
         self.chat_history.clear()
-        self.vector_store = None
 
     def get_chat_history(self) -> List[BaseMessage]:
         """Retrieve a copy of the current conversation history."""
@@ -795,10 +652,3 @@ If the user provides contact information (name, email, phone):
     def set_chat_history(self, history: List[BaseMessage]):
         """Set the conversation history from a list of BaseMessage instances."""
         self.chat_history = history.copy()
-
-    def _get_context(self, query: str) -> str:
-        """Retrieve relevant context from processed files using similarity search."""
-        if self.vector_store:
-            docs = self.vector_store.similarity_search(query, k=4)
-            return "\n".join([doc.page_content for doc in docs])
-        return ""
