@@ -2,10 +2,12 @@ from typing import List, Optional, Dict, Any, TypedDict, Annotated, Callable, Un
 import asyncio
 import logging
 import inspect
-from langchain.schema import AIMessage, HumanMessage, BaseMessage
-from langchain_core.messages import ToolMessage
+from pydantic import BaseModel
+from langchain_core.messages import AIMessage, HumanMessage, BaseMessage, ToolMessage
+from langchain_text_splitters import CharacterTextSplitter
+from langchain_community.vectorstores import FAISS
 from langchain_community.tools import BaseTool
-from langchain.callbacks.base import BaseCallbackHandler
+from langchain_core.callbacks import BaseCallbackHandler
 from langgraph.graph import StateGraph, END, add_messages
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
