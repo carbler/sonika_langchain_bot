@@ -11,7 +11,7 @@ from sonika_langchain_bot.langchain_tools import EmailTool,SaveContacto
 from sonika_langchain_bot.langchain_bot_agent import LangChainBot
 from sonika_langchain_bot.langchain_clasificator import  TextClassifier
 from sonika_langchain_bot.langchain_class import Message, ResponseModel
-from sonika_langchain_bot.langchain_models import OpenAILanguageModel
+from sonika_langchain_bot.langchain_models import OpenAILanguageModel, DeepSeekLanguageModel
 from pydantic import BaseModel, Field
 import json
 
@@ -56,7 +56,6 @@ def bot_bdi():
     tools = [EmailTool(), SaveContacto()]
     bot = LangChainBot(
         language_model, 
-        embeddings,  
         instructions="Eres un agente",
         tools=tools,
         on_tool_start=on_tool_start,
@@ -82,6 +81,40 @@ def bot_bdi():
     # history.append(Message(content=response["content"], is_bot=True))
     # logs = response["logs"]
 
+def bot_bdi_deepseek():
+    # Obtener claves de API desde el archivo .env
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+
+    if not api_key:
+        print("⚠️ DEEPSEEK_API_KEY no encontrada en .env")
+        return
+
+    language_model = DeepSeekLanguageModel(api_key, model_name='deepseek-chat', temperature=1)
+
+    tools = [EmailTool(), SaveContacto()]
+    bot = LangChainBot(
+        language_model,
+        instructions="Eres un agente",
+        tools=tools,
+        on_tool_start=on_tool_start,
+        on_tool_end=on_tool_end,
+        on_tool_error=on_tool_error
+    )
+
+    user_message = 'Hola, ¿quién eres?'
+
+    # Historial usando tu clase Message
+    messages = [Message(content="Mi nombre es Erley", is_bot=False)]
+
+    # Preparar logs históricos (vacío si es la primera vez)
+    logs = []
+
+    # Obtener la respuesta del bot
+    try:
+        response = bot.get_response(user_message, messages, logs)
+        print("Bot response (DeepSeek):", json.dumps(response, indent=2, ensure_ascii=False))
+    except Exception as e:
+        print(f"Error calling DeepSeek: {e}")
 
 
 def bot_bdi_streaming():
@@ -124,7 +157,8 @@ def clasification():
     result = classifier.classify("how are you?")
     print(result)
 
-bot_bdi()
+#bot_bdi()
 #bot_mutinodo()
 #bot_bdi_streaming()
 #clasification()
+bot_bdi_deepseek()
