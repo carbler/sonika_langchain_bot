@@ -7,7 +7,6 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 
-from sonika_langchain_bot.bot.multi_node_bot import MultiNodeBot
 from sonika_langchain_bot.langchain_tools import EmailTool,SaveContacto
 from sonika_langchain_bot.langchain_bot_agent import LangChainBot
 from sonika_langchain_bot.langchain_clasificator import  TextClassifier

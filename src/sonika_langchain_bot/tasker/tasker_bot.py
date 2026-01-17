@@ -34,7 +34,8 @@ class TaskerBot:
         mcp_servers: Optional[Dict[str, Any]] = None,
         max_messages: int = 100,
         max_logs: int = 20,
-        max_iterations: int = 10,
+        max_iterations: int = 15,
+        recursion_limit: int = 100,
         executor_max_retries: int = 2,
         on_planner_update: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_tool_start: Optional[Callable[[str, str], None]] = None,
@@ -61,6 +62,7 @@ class TaskerBot:
         self.max_messages = max_messages
         self.max_logs = max_logs
         self.max_iterations = max_iterations
+        self.recursion_limit = recursion_limit
         self.executor_max_retries = executor_max_retries
 
         # Callbacks
@@ -220,7 +222,10 @@ class TaskerBot:
         }
 
         with get_openai_callback() as cb:
-            result = asyncio.run(self.graph.ainvoke(initial_state))
+            result = asyncio.run(self.graph.ainvoke(
+                initial_state,
+                config={"recursion_limit": self.recursion_limit}
+            ))
             result["token_usage"] = {
                 "prompt_tokens": cb.prompt_tokens,
                 "completion_tokens": cb.completion_tokens,

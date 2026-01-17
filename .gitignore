@@ -22,3 +22,4 @@ wheels/
 .DS_Store
 EOL
 /myvenv/
+/test_ultimate/reports/*
