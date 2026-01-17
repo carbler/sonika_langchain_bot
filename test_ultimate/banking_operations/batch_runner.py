@@ -18,9 +18,8 @@ load_dotenv()
 # model: Nombre del modelo de OpenAI (ej: gpt-4o-mini, gpt-4o, gpt-3.5-turbo)
 
 TEST_CONFIGS = [
-    {"bot_id": "1", "model": "gpt-4o-mini"}, # PlannerBot (React)
+    {"bot_id": "5", "model": "gpt-4o-mini"}, # TaskerBot
     {"bot_id": "6", "model": "gpt-4o-mini"}, # LangChainBot
-    # {"bot_id": "3", "model": "gpt-4o"},    # OrchestratorBot (ejemplo)
 ]
 
 def resolve_bot_class(bot_id):

@@ -30,26 +30,6 @@ load_dotenv()
 # ==========================================
 
 AVAILABLE_BOTS = {
-    "1": {
-        "name": "PlannerBot (React)",
-        "module": "sonika_langchain_bot.planner_react",
-        "class": "PlannerBot"
-    },
-    "2": {
-        "name": "PlannerBot (Planner)",
-        "module": "sonika_langchain_bot.planner",
-        "class": "PlannerBot"
-    },
-    "3": {
-        "name": "OrchestratorBot",
-        "module": "sonika_langchain_bot.orchestrator",
-        "class": "OrchestratorBot"
-    },
-    "4": {
-        "name": "MultiNodeBot",
-        "module": "sonika_langchain_bot.bot",
-        "class": "MultiNodeBot"
-    },
     "5": {
         "name": "TaskerBot",
         "module": "sonika_langchain_bot.tasker",
@@ -153,8 +133,24 @@ class UltimateStressTestRunner:
                     on_tool_end=lambda x, y: None,
                     on_tool_error=lambda x, y: None
                 )
+            elif self.bot_name == "TaskerBot":
+                # TaskerBot con parámetros mejorados para evitar recursion limit
+                bot = self.bot_class(
+                    embeddings=self.embeddings,
+                    language_model=self.llm,
+                    function_purpose=FUNCTION_PURPOSE,
+                    personality_tone=PERSONALITY_TONE,
+                    limitations=LIMITATIONS,
+                    dynamic_info='',
+                    tools=tools,
+                    max_iterations=15,
+                    recursion_limit=100,
+                    on_tool_start=lambda x, y: None,
+                    on_tool_end=lambda x, y: None,
+                    on_tool_error=lambda x, y: None
+                )
             else:
-                # Estándar para otros bots
+                # Estándar para otros bots (si quedan)
                 bot = self.bot_class(
                     embeddings=self.embeddings,
                     language_model=self.llm,
