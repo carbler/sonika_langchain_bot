@@ -475,7 +475,8 @@ Ensure strict adherence to:
 2. Output Formatting requirements (JSON, Footers, Dates).
 3. Safety protocols based on the tool's output.
 """
-                messages.append({"role": "system", "content": meta_prompt})
+                # Usamos "user" en lugar de "system" para evitar errores con modelos estrictos (Gemini)
+                messages.append({"role": "user", "content": meta_prompt})
             else:
                 # El modelo va a planificar. Le recordamos mirar las reglas de overrides/seguridad.
                 meta_prompt = """
@@ -485,7 +486,8 @@ Before calling a tool or responding, REVIEW your System Instructions for:
 2. Missing Information requirements (ask before acting).
 3. User Sentiment protocols.
 """
-                messages.append({"role": "system", "content": meta_prompt})
+                # Usamos "user" en lugar de "system" para evitar errores con modelos estrictos (Gemini)
+                messages.append({"role": "user", "content": meta_prompt})
 
             try:
                 response = self.model_with_tools.invoke(messages)
@@ -493,6 +495,8 @@ Before calling a tool or responding, REVIEW your System Instructions for:
             except Exception as e:
                 self.logger.error(f"Error en agent_node: {e}")
                 self.logger.exception("Traceback completo:")
+                import traceback
+                traceback.print_exc()
                 fallback_response = AIMessage(content="I apologize, but I encountered an error processing your request.")
                 return {"messages": [fallback_response]}
 
