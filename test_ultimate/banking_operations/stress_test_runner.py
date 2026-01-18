@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 # Ajustar para importar desde src
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from sonika_langchain_bot.langchain_models import OpenAILanguageModel, DeepSeekLanguageModel
+from sonika_langchain_bot.langchain_models import OpenAILanguageModel, DeepSeekLanguageModel, GeminiLanguageModel
 from sonika_langchain_bot.langchain_bot_agent import Message
 from langchain_openai import OpenAIEmbeddings
 
@@ -58,6 +58,11 @@ class UltimateStressTestRunner:
             if not api_key:
                 raise ValueError("❌ DEEPSEEK_API_KEY no encontrada")
             self.llm = DeepSeekLanguageModel(api_key, model_name=model_name, temperature=0)
+        elif provider == "gemini":
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                raise ValueError("❌ GOOGLE_API_KEY no encontrada")
+            self.llm = GeminiLanguageModel(api_key, model_name=model_name, temperature=0)
         else:
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:

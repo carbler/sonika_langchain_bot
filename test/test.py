@@ -11,7 +11,7 @@ from sonika_langchain_bot.langchain_tools import EmailTool,SaveContacto
 from sonika_langchain_bot.langchain_bot_agent import LangChainBot
 from sonika_langchain_bot.langchain_clasificator import  TextClassifier
 from sonika_langchain_bot.langchain_class import Message, ResponseModel
-from sonika_langchain_bot.langchain_models import OpenAILanguageModel, DeepSeekLanguageModel
+from sonika_langchain_bot.langchain_models import OpenAILanguageModel, DeepSeekLanguageModel, GeminiLanguageModel
 from pydantic import BaseModel, Field
 import json
 
@@ -116,6 +116,41 @@ def bot_bdi_deepseek():
     except Exception as e:
         print(f"Error calling DeepSeek: {e}")
 
+def bot_bdi_gemini():
+    # Obtener claves de API desde el archivo .env
+    api_key = os.getenv("GOOGLE_API_KEY")
+
+    if not api_key:
+        print("⚠️ GOOGLE_API_KEY no encontrada en .env")
+        return
+
+    language_model = GeminiLanguageModel(api_key, model_name='gemini-1.5-flash', temperature=1)
+
+    tools = [EmailTool(), SaveContacto()]
+    bot = LangChainBot(
+        language_model,
+        instructions="Eres un agente",
+        tools=tools,
+        on_tool_start=on_tool_start,
+        on_tool_end=on_tool_end,
+        on_tool_error=on_tool_error
+    )
+
+    user_message = 'Envia un email con la tool a erley@gmail.com con el asunto Hola y el mensaje Hola Erley. Y guarda a erley como contacto'
+
+    # Historial usando tu clase Message
+    messages = [Message(content="Mi nombre es Erley", is_bot=False)]
+
+    # Preparar logs históricos (vacío si es la primera vez)
+    logs = []
+
+    # Obtener la respuesta del bot
+    try:
+        response = bot.get_response(user_message, messages, logs)
+        print("Bot response (Gemini):", json.dumps(response, indent=2, ensure_ascii=False))
+    except Exception as e:
+        print(f"Error calling Gemini: {e}")
+
 
 def bot_bdi_streaming():
     # Obtener claves de API desde el archivo .env
@@ -161,4 +196,5 @@ def clasification():
 #bot_mutinodo()
 #bot_bdi_streaming()
 #clasification()
-bot_bdi_deepseek()
+#bot_bdi_deepseek()
+bot_bdi_gemini()
