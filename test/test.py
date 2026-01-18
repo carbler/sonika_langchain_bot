@@ -101,7 +101,7 @@ def bot_bdi_deepseek():
         on_tool_error=on_tool_error
     )
 
-    user_message = 'Hola, ¿quién eres?'
+    user_message = 'Envia un email con la tool a erley@gmail.com con el asunto Hola y el mensaje Hola Erley. Y guarda a erley como contacto'
 
     # Historial usando tu clase Message
     messages = [Message(content="Mi nombre es Erley", is_bot=False)]

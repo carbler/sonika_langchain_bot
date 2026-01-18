@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 # Ajustar para importar desde src
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from sonika_langchain_bot.langchain_models import OpenAILanguageModel
+from sonika_langchain_bot.langchain_models import OpenAILanguageModel, DeepSeekLanguageModel
 from sonika_langchain_bot.langchain_bot_agent import Message
 from langchain_openai import OpenAIEmbeddings
 
@@ -47,20 +47,33 @@ AVAILABLE_BOTS = {
 # ==========================================
 
 class UltimateStressTestRunner:
-    def __init__(self, bot_class, bot_name, model_name):
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("❌ OPENAI_API_KEY no encontrada")
-
+    def __init__(self, bot_class, bot_name, model_name, provider="openai"):
         self.bot_class = bot_class
         self.bot_name = bot_name
         self.model_name = model_name
-        self.llm = OpenAILanguageModel(api_key, model_name=model_name, temperature=0)
+        self.provider = provider
+
+        if provider == "deepseek":
+            api_key = os.getenv("DEEPSEEK_API_KEY")
+            if not api_key:
+                raise ValueError("❌ DEEPSEEK_API_KEY no encontrada")
+            self.llm = DeepSeekLanguageModel(api_key, model_name=model_name, temperature=0)
+        else:
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("❌ OPENAI_API_KEY no encontrada")
+            self.llm = OpenAILanguageModel(api_key, model_name=model_name, temperature=0)
+
+        # Embeddings siempre usan OpenAI por ahora
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+             raise ValueError("❌ OPENAI_API_KEY no encontrada para Embeddings")
+
+        self.embeddings = OpenAIEmbeddings(api_key=openai_api_key)
 
         self.total_score = 0
         self.max_score = 0
         self.test_results = []
-        self.embeddings = OpenAIEmbeddings(api_key=api_key)
         self.start_time = None
         self.end_time = None
 
@@ -269,11 +282,16 @@ if __name__ == "__main__":
     try:
         bot_class, bot_name = select_bot()
 
-        model_name = input("\n🧠 Ingrese nombre del modelo (default: gpt-4o-mini): ").strip()
-        if not model_name:
-            model_name = "gpt-4o-mini"
+        provider = input("\n🌐 Ingrese proveedor (openai/deepseek) [default: openai]: ").strip().lower()
+        if not provider:
+            provider = "openai"
 
-        runner = UltimateStressTestRunner(bot_class, bot_name, model_name)
+        default_model = "gpt-4o-mini" if provider == "openai" else "deepseek-chat"
+        model_name = input(f"🧠 Ingrese nombre del modelo (default: {default_model}): ").strip()
+        if not model_name:
+            model_name = default_model
+
+        runner = UltimateStressTestRunner(bot_class, bot_name, model_name, provider=provider)
         runner.run_all_tests()
 
     except ValueError as e:

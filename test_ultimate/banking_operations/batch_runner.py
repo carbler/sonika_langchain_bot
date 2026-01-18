@@ -15,11 +15,12 @@ load_dotenv()
 # ==========================================
 # Define aquí las combinaciones de Bot y Modelo que deseas probar.
 # bot_id: Corresponde a las claves en AVAILABLE_BOTS (1-6)
-# model: Nombre del modelo de OpenAI (ej: gpt-4o-mini, gpt-4o, gpt-3.5-turbo)
+# model: Nombre del modelo (ej: gpt-4o-mini, deepseek-chat)
+# provider: Proveedor del modelo (openai, deepseek). Default: openai
 
 TEST_CONFIGS = [
-    {"bot_id": "5", "model": "gpt-4o-mini"}, # TaskerBot
-    {"bot_id": "6", "model": "gpt-4o-mini"}, # LangChainBot
+    {"bot_id": "5", "model": "gpt-4o-mini", "provider": "openai"}, # TaskerBot
+    {"bot_id": "6", "model": "gpt-4o-mini", "provider": "openai"}, # LangChainBot
 ]
 
 def resolve_bot_class(bot_id):
@@ -50,6 +51,7 @@ def run_batch():
     for i, config in enumerate(TEST_CONFIGS, 1):
         bot_id = config.get("bot_id")
         model_name = config.get("model", "gpt-4o-mini")
+        provider = config.get("provider", "openai")
 
         bot_class, bot_name = resolve_bot_class(bot_id)
 
@@ -60,11 +62,12 @@ def run_batch():
         print(f"\n▶️  EJECUTANDO RUN {i}/{len(TEST_CONFIGS)}")
         print(f"   🤖 Bot: {bot_name}")
         print(f"   🧠 Modelo: {model_name}")
+        print(f"   🌐 Proveedor: {provider}")
         print("-" * 30)
 
         try:
             # Instanciar y ejecutar el runner
-            runner = UltimateStressTestRunner(bot_class, bot_name, model_name)
+            runner = UltimateStressTestRunner(bot_class, bot_name, model_name, provider=provider)
             runner.run_all_tests()
             successful_runs += 1
             print(f"✅ Run {i} completado exitosamente.")
