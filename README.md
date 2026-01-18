@@ -30,7 +30,6 @@ GOOGLE_API_KEY=your_gemini_key_here
 - **Conversational Agent**: Robust agent (`LangChainBot`) with native tool execution capabilities.
 - **Structured Classification**: Text classification with strongly typed outputs.
 - **Custom Tools**: Easy integration of custom tools via Pydantic and LangChain.
-- **Streaming**: Full support for streaming responses.
 - **History Management**: Built-in conversation history tracking.
 
 ## Basic Usage
@@ -74,38 +73,6 @@ user_message = 'Send an email with the tool to erley@gmail.com with subject Hell
 response_model: ResponseModel = bot.get_response(user_message)
 
 print(response_model)
-```
-
-### Streaming Response Example
-
-```python
-import os
-from dotenv import load_dotenv
-from langchain_openai import OpenAIEmbeddings
-from sonika_langchain_bot.langchain_bot_agent import LangChainBot
-from sonika_langchain_bot.langchain_class import Message
-from sonika_langchain_bot.langchain_models import OpenAILanguageModel
-
-# Load environment variables
-load_dotenv()
-
-# Get API key from .env file
-api_key = os.getenv("OPENAI_API_KEY")
-
-# Initialize language model and embeddings
-language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini-2024-07-18', temperature=1)
-embeddings = OpenAIEmbeddings(api_key=api_key)
-
-# Create agent instance
-bot = LangChainBot(language_model, embeddings, instructions="Only answers in english", tools=[])
-
-# Load conversation history
-bot.load_conversation_history([Message(content="My name is Erley", is_bot=False)])
-
-# Get streaming response
-user_message = 'Hello, what is my name?'
-for chunk in bot.get_response_stream(user_message):
-    print(chunk)
 ```
 
 ### Text Classification Example
