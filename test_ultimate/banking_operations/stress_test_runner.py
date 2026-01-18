@@ -139,7 +139,6 @@ class UltimateStressTestRunner:
                 combined_instructions = f"{FUNCTION_PURPOSE}\n\n{PERSONALITY_TONE}\n\n{LIMITATIONS}"
                 bot = self.bot_class(
                     language_model=self.llm,
-                    embeddings=self.embeddings,
                     instructions=combined_instructions,
                     tools=tools,
                     on_tool_start=lambda x, y: None,
