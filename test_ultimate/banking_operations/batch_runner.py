@@ -22,7 +22,7 @@ TEST_CONFIGS = [
     {"bot_id": "5", "model": "gpt-4o-mini", "provider": "openai"}, # TaskerBot
     {"bot_id": "6", "model": "gpt-4o-mini", "provider": "openai"}, # LangChainBot
     {"bot_id": "6", "model": "deepseek-chat", "provider": "deepseek"}, # LangChainBot with DeepSeek
-    {"bot_id": "6", "model": "gemini-1.5-flash", "provider": "gemini"}, # LangChainBot with Gemini
+    {"bot_id": "6", "model": "gemini-3-flash-preview", "provider": "gemini"}, # LangChainBot with Gemini
 ]
 
 def resolve_bot_class(bot_id):

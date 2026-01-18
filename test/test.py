@@ -124,7 +124,7 @@ def bot_bdi_gemini():
         print("⚠️ GOOGLE_API_KEY no encontrada en .env")
         return
 
-    language_model = GeminiLanguageModel(api_key, model_name='gemini-1.5-flash', temperature=1)
+    language_model = GeminiLanguageModel(api_key, model_name='gemini-3-flash-preview', temperature=1)
 
     tools = [EmailTool(), SaveContacto()]
     bot = LangChainBot(

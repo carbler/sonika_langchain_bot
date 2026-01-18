@@ -69,7 +69,7 @@ class GeminiLanguageModel(ILanguageModel):
     Proporciona funcionalidades para generar respuestas y contar tokens.
     """
 
-    def __init__(self, api_key: str, model_name: str = "gemini-1.5-flash", temperature: float = 0.7):
+    def __init__(self, api_key: str, model_name: str = "gemini-3-flash-preview", temperature: float = 0.7):
         """
         Inicializa el modelo de lenguaje de Gemini.
 
