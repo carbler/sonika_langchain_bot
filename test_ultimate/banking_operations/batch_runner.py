@@ -21,6 +21,7 @@ load_dotenv()
 TEST_CONFIGS = [
     {"bot_id": "5", "model": "gpt-4o-mini", "provider": "openai"}, # TaskerBot
     {"bot_id": "6", "model": "gpt-4o-mini", "provider": "openai"}, # LangChainBot
+    {"bot_id": "6", "model": "deepseek-chat", "provider": "deepseek"}, # LangChainBot with DeepSeek
 ]
 
 def resolve_bot_class(bot_id):
@@ -85,9 +86,19 @@ def run_batch():
     print("="*60)
 
 if __name__ == "__main__":
-    # Verificar API Key antes de empezar
-    if not os.getenv("OPENAI_API_KEY"):
-        print("❌ Error: OPENAI_API_KEY no encontrada en variables de entorno.")
-        sys.exit(1)
+    # Verificar keys según proveedores usados
+    providers = {c.get("provider", "openai") for c in TEST_CONFIGS}
+
+    # OpenAI check (provider or embeddings)
+    if "openai" in providers or not os.getenv("OPENAI_API_KEY"):
+         if not os.getenv("OPENAI_API_KEY"):
+            print("❌ Error: OPENAI_API_KEY requerida (para provider 'openai' o embeddings).")
+            sys.exit(1)
+
+    # DeepSeek check
+    if "deepseek" in providers:
+        if not os.getenv("DEEPSEEK_API_KEY"):
+            print("❌ Error: DEEPSEEK_API_KEY requerida para configs con provider 'deepseek'.")
+            sys.exit(1)
 
     run_batch()
