@@ -22,6 +22,7 @@ TEST_CONFIGS = [
     {"bot_id": "5", "model": "gpt-4o-mini", "provider": "openai"}, # TaskerBot
     {"bot_id": "6", "model": "gpt-4o-mini", "provider": "openai"}, # LangChainBot
     {"bot_id": "6", "model": "deepseek-chat", "provider": "deepseek"}, # LangChainBot with DeepSeek
+    {"bot_id": "6", "model": "gemini-3-flash-preview", "provider": "gemini"}, # LangChainBot with Gemini
 ]
 
 def resolve_bot_class(bot_id):
@@ -99,6 +100,12 @@ if __name__ == "__main__":
     if "deepseek" in providers:
         if not os.getenv("DEEPSEEK_API_KEY"):
             print("❌ Error: DEEPSEEK_API_KEY requerida para configs con provider 'deepseek'.")
+            sys.exit(1)
+
+    # Gemini check
+    if "gemini" in providers:
+        if not os.getenv("GOOGLE_API_KEY"):
+            print("❌ Error: GOOGLE_API_KEY requerida para configs con provider 'gemini'.")
             sys.exit(1)
 
     run_batch()

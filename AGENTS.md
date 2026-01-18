@@ -1,138 +1,113 @@
-# AGENTS.md
+# AI Agents Documentation (`AGENTS.md`)
 
-Este archivo describe el proyecto para AI assistants (opencode, Claude Code, etc.).
+This document serves as the primary knowledge base for AI Agents (such as OpenDevin, Claude Code, GitHub Copilot Workspace, etc.) working on this repository. It defines the project context, architecture, available skills, and development standards.
 
-## Project Overview
+## 🧠 Project Context & Mission
 
-**sonika-langchain-bot** es una librería Python que implementa agentes conversacionales usando LangChain con capacidades de ejecución de herramientas y clasificación de texto.
+**sonika-langchain-bot** is a robust Python library designed to build state-of-the-art conversational agents. It leverages `LangChain` and `LangGraph` to create autonomous bots capable of:
+1.  **Complex Reasoning**: Using ReAct patterns and graph-based workflows.
+2.  **Tool Execution**: Interacting with external systems (Email, CRM, etc.) via structured tool definitions.
+3.  **Multi-Model Support**: Agnostic integration with **OpenAI**, **DeepSeek**, and **Google Gemini**.
 
-## Key Components
+The goal is to provide a standardized, scalable framework for banking and customer service bots that is easy to extend and stress-test.
 
-### Core Bots
-1. **LangChainBot** (59% score) - Agente conversacional principal con ejecución de herramientas
-2. **TaskerBot** (52% score) - Bot con patrón ReAct mejorado y arquitectura robusta
+---
 
-### Supporting Modules
-- `langchain_models.py`: Wrapper para modelos de lenguaje OpenAI
-- `langchain_class.py`: Estructuras de datos (Message, ResponseModel, etc.)
-- `langchain_tools.py`: Herramientas disponibles (EmailTool, etc.)
-- `langchain_clasificator.py`: Clasificador de texto con salida estructurada
-- `document_processor.py`: Procesador de documentos (PDF, DOCX, etc.)
+## 🤖 Bot Architectures
 
-## Project Structure
+The project features two primary bot implementations:
 
-```
-sonika-langchain-bot/
-├── src/sonika_langchain_bot/
-│   ├── langchain_bot_agent.py     # LangChainBot
-│   ├── langchain_models.py        # Model wrapper
-│   ├── langchain_class.py         # Data classes
-│   ├── langchain_tools.py         # Tools
-│   ├── langchain_clasificator.py  # Text classifier
-│   ├── document_processor.py      # Document processor
-│   ├── tasker/                    # TaskerBot implementation
-│   │   ├── tasker_bot.py          # Main TaskerBot class
-│   │   ├── state.py              # State definitions
-│   │   ├── nodes/                # Graph nodes
-│   │   └── prompts/              # System prompts
-│   └── __init__.py
-├── test/                          # Unit tests
-├── test_ultimate/                 # Comprehensive stress tests
-│   ├── banking_operations/        # Banking domain tests
-│   └── reports/                   # Test reports
-├── setup.py                       # Package configuration
-├── requirements.txt               # Dependencies
-├── README.md                      # User documentation
-└── AGENTS.md                      # This file
-```
+### 1. `LangChainBot` (Standard Agent)
+*   **Path**: `src/sonika_langchain_bot/langchain_bot_agent.py`
+*   **Architecture**: Uses `LangGraph` state graph (`agent` -> `tools` -> `agent`).
+*   **Features**:
+    *   Streaming response support.
+    *   Native tool calling handling.
+    *   Robust error handling with meta-prompt injection for model compatibility (e.g., Gemini).
+    *   Comprehensive token usage tracking.
 
-## Development Commands
+### 2. `TaskerBot` (Advanced Planner)
+*   **Path**: `src/sonika_langchain_bot/tasker/`
+*   **Architecture**: Enhanced ReAct pattern with explicit `Planner`, `Executor`, and `Validator` nodes.
+*   **Features**:
+    *   Iterative problem solving with recursion limits.
+    *   Separation of concerns between planning and acting.
+    *   Ideal for complex, multi-step tasks.
 
-### Installation
-```bash
-pip install -e .
-```
+---
 
-### Running Tests
-```bash
-# Unit tests
-python -m pytest test/
+## 🛠 Skills & Tools
 
-# Stress tests (LangChainBot + TaskerBot)
-cd test_ultimate/banking_operations
-python batch_runner.py
-```
+Agents working on this repo should be aware of the "Skills" (Tools) available to the bots. These are defined in `src/sonika_langchain_bot/langchain_tools.py` and other modules.
 
-### Code Quality
-```bash
-# Type checking (if using mypy)
-mypy src/
+### Core Skills
+| Skill / Tool Name | Class Name | Description | Inputs |
+| :--- | :--- | :--- | :--- |
+| **Email Sender** | `EmailTool` | Sends emails to users. | `to_email` (str), `subject` (str), `message` (str) |
+| **Contact Saver** | `SaveContact` | Saves/Updates contact info in CRM. | `nombre` (str), `correo` (str), `telefono` (str) |
 
-# Linting (if using flake8/black)
-black src/
-flake8 src/
-```
+### Banking Domain Skills (in Stress Tests)
+*Located in `test_ultimate/banking_operations/tools.py`*
+*   `GetUserProfile`
+*   `TransactionTool`
+*   `CreateTicket`
+*   `BlockAccountTool`
+*   `RefundTool`
+*   `CheckFraudScore`
+*   etc.
 
-## Key Dependencies
+---
 
-- `langchain-core`, `langchain-openai`: Core LangChain functionality
-- `langgraph`: Graph-based agent workflows
-- `pydantic`: Data validation
-- `faiss-cpu`: Vector similarity search
-- `python-dotenv`: Environment variables
+## 🌐 Supported Models
 
-## How the Bots Work
+This project implements a unified `ILanguageModel` interface to support multiple providers.
 
-### LangChainBot
-- Usa `langgraph` para flujos de trabajo con herramientas
-- Soporta streaming de respuestas
-- Maneja historial de conversación
-- Incluye callbacks para monitoreo de herramientas
+| Provider | Class Name | Config File | Env Variable |
+| :--- | :--- | :--- | :--- |
+| **OpenAI** | `OpenAILanguageModel` | `langchain_models.py` | `OPENAI_API_KEY` |
+| **DeepSeek** | `DeepSeekLanguageModel` | `langchain_models.py` | `DEEPSEEK_API_KEY` |
+| **Google Gemini** | `GeminiLanguageModel` | `langchain_models.py` | `GOOGLE_API_KEY` |
 
-### TaskerBot
-- Arquitectura Planner → Executor → Output → Validator
-- Patrón ReAct mejorado con límites de recursión configurables
-- Nodos separados para planificación, ejecución y validación
-- Integración con MCP (Model Context Protocol)
+> **Note for Agents**: When implementing new features, ensure compatibility with ALL three providers. Gemini, in particular, has strict requirements regarding system message placement (see `LangChainBot` implementation details).
 
-## Common Tasks for AI Assistants
+---
 
-### Adding New Tools
-1. Crear clase en `langchain_tools.py` heredando de `BaseTool`
-2. Implementar `_run` method con lógica
-3. Actualizar documentación en README.md
+## 💻 Development Standards
 
-### Modifying Bot Behavior
-- LangChainBot: ajustar `instructions` parámetro
-- TaskerBot: modificar prompts en `tasker/prompts/`
+### 1. Code Style
+*   **Python**: Follow PEP 8.
+*   **Typing**: Use type hints (`typing` module) for all function signatures.
+*   **Docstrings**: All classes and public methods must have docstrings describing args and returns.
 
-### Running Performance Tests
-1. Asegurar `OPENAI_API_KEY` en `.env`
-2. Ejecutar `test_ultimate/banking_operations/batch_runner.py`
-3. Revisar reportes en `test_ultimate/reports/`
+### 2. Testing Strategy
+*   **Unit Tests**: Located in `test/`. Run with `python test/test.py` or `pytest`.
+*   **Stress Tests**: Located in `test_ultimate/`.
+    *   Use `UltimateStressTestRunner` in `test_ultimate/banking_operations/stress_test_runner.py`.
+    *   Configure batches in `test_ultimate/banking_operations/batch_runner.py`.
+    *   **Mandatory**: Run stress tests before submitting core changes to bot logic.
 
-## Troubleshooting
-
-### TaskerBot Recursion Limit Error
-Si TaskerBot falla con "recursion limit reached":
-1. Incrementar `recursion_limit` en instanciación
-2. Ajustar `max_iterations` en `tasker_bot.py`
-3. Verificar que los tools retornen correctamente
-
-### Import Errors
-Asegurar que todas las dependencias estén instaladas:
-```bash
-pip install -r requirements.txt
+### 3. Environment Setup
+Create a `.env` file in the root:
+```env
+OPENAI_API_KEY=sk-...
+DEEPSEEK_API_KEY=sk-...
+GOOGLE_API_KEY=AIza...
 ```
 
-## Contributing
+### 4. Workflow for AI Agents
+1.  **Read Context**: Always read `AGENTS.md` and `README.md` first.
+2.  **Plan**: create a step-by-step plan using `set_plan`.
+3.  **Implement**: Write code, ensuring multi-model support.
+4.  **Verify**: Run `test/test.py` for quick checks and `batch_runner.py` for regression.
+5.  **Reflect**: Update memory or documentation if new patterns are discovered.
 
-1. Sigue patrones existentes en código
-2. Ejecuta tests antes de commits
-3. Actualiza AGENTS.md si cambia estructura del proyecto
-4. Mantén compatibilidad con los dos bots principales
+---
 
-## Contact
+## 📂 Project Structure Map
 
-- Autor: Erley Blanco Carvajal
-- Licencia: MIT
+*   `src/sonika_langchain_bot/`: Library source code.
+    *   `langchain_bot_agent.py`: **Main Bot Logic**.
+    *   `langchain_models.py`: **LLM Wrappers** (OpenAI, DeepSeek, Gemini).
+    *   `langchain_tools.py`: **Tool Definitions**.
+*   `test/`: Quick functional tests.
+*   `test_ultimate/`: Advanced stress testing framework.
