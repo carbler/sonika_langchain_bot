@@ -15,6 +15,7 @@ You'll need the following API keys depending on the model you wish to use:
 - OpenAI API Key
 - DeepSeek API Key (Optional)
 - Google Gemini API Key (Optional)
+- AWS Credentials (Optional, for Bedrock)
 
 Create a `.env` file in the root of your project with the following variables:
 
@@ -22,11 +23,14 @@ Create a `.env` file in the root of your project with the following variables:
 OPENAI_API_KEY=your_openai_key_here
 DEEPSEEK_API_KEY=your_deepseek_key_here
 GOOGLE_API_KEY=your_gemini_key_here
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_REGION=us-east-1
 ```
 
 ## Key Features
 
-- **Multi-Model Support**: Seamlessly switch between OpenAI, DeepSeek, and Google Gemini models.
+- **Multi-Model Support**: Seamlessly switch between OpenAI, DeepSeek, Google Gemini, and Amazon Bedrock models.
 - **Conversational Agent**: Robust agent (`LangChainBot`) with native tool execution capabilities.
 - **Structured Classification**: Text classification with strongly typed outputs.
 - **Custom Tools**: Easy integration of custom tools via Pydantic and LangChain.
@@ -118,6 +122,7 @@ print(result)
 - **OpenAILanguageModel**: Wrapper for OpenAI language models
 - **DeepSeekLanguageModel**: Wrapper for DeepSeek language models
 - **GeminiLanguageModel**: Wrapper for Google Gemini models
+- **BedrockLanguageModel**: Wrapper for Amazon Bedrock models
 - **TextClassifier**: Text classification using structured output
 - **Message**: Message structure for conversation history
 - **ResponseModel**: Response structure from agent interactions

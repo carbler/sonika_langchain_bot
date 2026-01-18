@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 # Ajustar para importar desde src
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from sonika_langchain_bot.langchain_models import OpenAILanguageModel, DeepSeekLanguageModel, GeminiLanguageModel
+from sonika_langchain_bot.langchain_models import OpenAILanguageModel, DeepSeekLanguageModel, GeminiLanguageModel, BedrockLanguageModel
 from sonika_langchain_bot.langchain_bot_agent import Message
 from langchain_openai import OpenAIEmbeddings
 
@@ -63,6 +63,13 @@ class UltimateStressTestRunner:
             if not api_key:
                 raise ValueError("❌ GOOGLE_API_KEY no encontrada")
             self.llm = GeminiLanguageModel(api_key, model_name=model_name, temperature=0)
+        elif provider == "bedrock":
+            aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+            aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+            aws_region = os.getenv("AWS_REGION", "us-east-1")
+            if not aws_access_key or not aws_secret_key:
+                raise ValueError("❌ AWS Credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) no encontradas")
+            self.llm = BedrockLanguageModel(aws_access_key, aws_secret_key, region_name=aws_region, model_name=model_name, temperature=0)
         else:
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
