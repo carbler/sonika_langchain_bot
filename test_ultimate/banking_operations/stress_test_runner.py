@@ -64,12 +64,11 @@ class UltimateStressTestRunner:
                 raise ValueError("❌ GOOGLE_API_KEY no encontrada")
             self.llm = GeminiLanguageModel(api_key, model_name=model_name, temperature=0)
         elif provider == "bedrock":
-            aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
-            aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+            api_key = os.getenv("AWS_BEARER_TOKEN_BEDROCK")
             aws_region = os.getenv("AWS_REGION", "us-east-1")
-            if not aws_access_key or not aws_secret_key:
-                raise ValueError("❌ AWS Credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) no encontradas")
-            self.llm = BedrockLanguageModel(aws_access_key, aws_secret_key, region_name=aws_region, model_name=model_name, temperature=0)
+            if not api_key:
+                raise ValueError("❌ AWS_BEARER_TOKEN_BEDROCK no encontrada")
+            self.llm = BedrockLanguageModel(api_key, region_name=aws_region, model_name=model_name, temperature=0)
         else:
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:

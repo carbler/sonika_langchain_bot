@@ -1,4 +1,4 @@
-import boto3
+import os
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_aws import ChatBedrock
@@ -71,26 +71,20 @@ class BedrockLanguageModel(ILanguageModel):
     Proporciona funcionalidades para generar respuestas y contar tokens.
     """
 
-    def __init__(self, aws_access_key: str, aws_secret_key: str, region_name: str, model_name: str = "anthropic.claude-3-sonnet-20240229-v1:0", temperature: float = 0.7):
+    def __init__(self, api_key: str, region_name: str, model_name: str = "anthropic.claude-3-sonnet-20240229-v1:0", temperature: float = 0.7):
         """
         Inicializa el modelo de lenguaje de Amazon Bedrock.
 
         Args:
-            aws_access_key (str): AWS Access Key ID
-            aws_secret_key (str): AWS Secret Access Key
+            api_key (str): API Key de Amazon Bedrock (AWS_BEARER_TOKEN_BEDROCK)
             region_name (str): AWS Region (ej: us-east-1)
             model_name (str): ID del modelo en Bedrock (ej: anthropic.claude-3-sonnet-20240229-v1:0)
             temperature (float): Temperatura para la generación de respuestas
         """
-        client = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=region_name,
-            aws_access_key_id=aws_access_key,
-            aws_secret_access_key=aws_secret_key
-        )
+        # Configurar la variable de entorno necesaria para langchain-aws
+        os.environ["AWS_BEARER_TOKEN_BEDROCK"] = api_key
 
         self.model = ChatBedrock(
-            client=client,
             model_id=model_name,
             region_name=region_name,
             model_kwargs={"temperature": temperature}

@@ -153,18 +153,16 @@ def bot_bdi_gemini():
 
 def bot_bdi_bedrock():
     # Obtener claves de API desde el archivo .env
-    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
-    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    api_key = os.getenv("AWS_BEARER_TOKEN_BEDROCK")
     aws_region = os.getenv("AWS_REGION", "us-east-1")
 
-    if not aws_access_key or not aws_secret_key:
-        print("⚠️ AWS credentials not found in .env")
+    if not api_key:
+        print("⚠️ AWS_BEARER_TOKEN_BEDROCK not found in .env")
         return
 
     # Usando Claude 3 Sonnet como default
     language_model = BedrockLanguageModel(
-        aws_access_key,
-        aws_secret_key,
+        api_key=api_key,
         region_name=aws_region,
         model_name='anthropic.claude-3-sonnet-20240229-v1:0',
         temperature=1

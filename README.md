@@ -15,7 +15,7 @@ You'll need the following API keys depending on the model you wish to use:
 - OpenAI API Key
 - DeepSeek API Key (Optional)
 - Google Gemini API Key (Optional)
-- AWS Credentials (Optional, for Bedrock)
+- AWS Bedrock API Key (Optional, for Bedrock)
 
 Create a `.env` file in the root of your project with the following variables:
 
@@ -23,8 +23,7 @@ Create a `.env` file in the root of your project with the following variables:
 OPENAI_API_KEY=your_openai_key_here
 DEEPSEEK_API_KEY=your_deepseek_key_here
 GOOGLE_API_KEY=your_gemini_key_here
-AWS_ACCESS_KEY_ID=your_aws_access_key
-AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_BEARER_TOKEN_BEDROCK=your_bedrock_api_key_here
 AWS_REGION=us-east-1
 ```
 

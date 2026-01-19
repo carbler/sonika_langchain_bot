@@ -111,8 +111,8 @@ if __name__ == "__main__":
 
     # Bedrock check
     if "bedrock" in providers:
-        if not os.getenv("AWS_ACCESS_KEY_ID") or not os.getenv("AWS_SECRET_ACCESS_KEY"):
-            print("❌ Error: AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY requeridas para configs con provider 'bedrock'.")
+        if not os.getenv("AWS_BEARER_TOKEN_BEDROCK"):
+            print("❌ Error: AWS_BEARER_TOKEN_BEDROCK requerida para configs con provider 'bedrock'.")
             sys.exit(1)
 
     run_batch()
