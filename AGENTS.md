@@ -69,7 +69,7 @@ This project implements a unified `ILanguageModel` interface to support multiple
 | **Google Gemini** | `GeminiLanguageModel` | `langchain_models.py` | `GOOGLE_API_KEY` |
 | **Amazon Bedrock** | `BedrockLanguageModel` | `langchain_models.py` | `AWS_BEARER_TOKEN_BEDROCK` |
 
-> **Note for Agents**: When implementing new features, ensure compatibility with ALL supported providers. Gemini, in particular, has strict requirements regarding system message placement (see `LangChainBot` implementation details).
+> **Note for Agents**: When implementing new features, ensure compatibility with ALL supported providers. Gemini, in particular, has strict requirements regarding system message placement (see `LangChainBot` implementation details). Embeddings are no longer used by the standard `LangChainBot` architecture.
 
 ---
 

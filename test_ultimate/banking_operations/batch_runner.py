@@ -23,7 +23,7 @@ TEST_CONFIGS = [
     {"bot_id": "6", "model": "gpt-4o-mini", "provider": "openai"}, # LangChainBot
     {"bot_id": "6", "model": "deepseek-chat", "provider": "deepseek"}, # LangChainBot with DeepSeek
     {"bot_id": "6", "model": "gemini-3-flash-preview", "provider": "gemini"}, # LangChainBot with Gemini
-    {"bot_id": "6", "model": "anthropic.claude-3-sonnet-20240229-v1:0", "provider": "bedrock"}, # LangChainBot with Bedrock
+    {"bot_id": "6", "model": "amazon.nova-micro-v1:0", "provider": "bedrock"}, # LangChainBot with Bedrock
 ]
 
 def resolve_bot_class(bot_id):

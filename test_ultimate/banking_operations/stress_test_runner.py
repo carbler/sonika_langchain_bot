@@ -11,7 +11,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 from sonika_langchain_bot.langchain_models import OpenAILanguageModel, DeepSeekLanguageModel, GeminiLanguageModel, BedrockLanguageModel
 from sonika_langchain_bot.langchain_bot_agent import Message
-from langchain_openai import OpenAIEmbeddings
 
 # Importar componentes locales
 from tools import (
@@ -74,13 +73,6 @@ class UltimateStressTestRunner:
             if not api_key:
                 raise ValueError("❌ OPENAI_API_KEY no encontrada")
             self.llm = OpenAILanguageModel(api_key, model_name=model_name, temperature=0)
-
-        # Embeddings siempre usan OpenAI por ahora
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-             raise ValueError("❌ OPENAI_API_KEY no encontrada para Embeddings")
-
-        self.embeddings = OpenAIEmbeddings(api_key=openai_api_key)
 
         self.total_score = 0
         self.max_score = 0
@@ -159,7 +151,6 @@ class UltimateStressTestRunner:
             elif self.bot_name == "TaskerBot":
                 # TaskerBot con parámetros mejorados para evitar recursion limit
                 bot = self.bot_class(
-                    embeddings=self.embeddings,
                     language_model=self.llm,
                     function_purpose=FUNCTION_PURPOSE,
                     personality_tone=PERSONALITY_TONE,
@@ -175,7 +166,6 @@ class UltimateStressTestRunner:
             else:
                 # Estándar para otros bots (si quedan)
                 bot = self.bot_class(
-                    embeddings=self.embeddings,
                     language_model=self.llm,
                     function_purpose=FUNCTION_PURPOSE,
                     personality_tone=PERSONALITY_TONE,

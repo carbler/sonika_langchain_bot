@@ -160,11 +160,11 @@ def bot_bdi_bedrock():
         print("⚠️ AWS_BEARER_TOKEN_BEDROCK not found in .env")
         return
 
-    # Usando Claude 3 Sonnet como default
+    # Usando Amazon Nova Micro como default
     language_model = BedrockLanguageModel(
         api_key=api_key,
         region_name=aws_region,
-        model_name='anthropic.claude-3-sonnet-20240229-v1:0',
+        model_name='amazon.nova-micro-v1:0',
         temperature=1
     )
 

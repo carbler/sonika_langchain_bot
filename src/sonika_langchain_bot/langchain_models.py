@@ -71,14 +71,14 @@ class BedrockLanguageModel(ILanguageModel):
     Proporciona funcionalidades para generar respuestas y contar tokens.
     """
 
-    def __init__(self, api_key: str, region_name: str, model_name: str = "anthropic.claude-3-sonnet-20240229-v1:0", temperature: float = 0.7):
+    def __init__(self, api_key: str, region_name: str, model_name: str = "amazon.nova-micro-v1:0", temperature: float = 0.7):
         """
         Inicializa el modelo de lenguaje de Amazon Bedrock.
 
         Args:
             api_key (str): API Key de Amazon Bedrock (AWS_BEARER_TOKEN_BEDROCK)
             region_name (str): AWS Region (ej: us-east-1)
-            model_name (str): ID del modelo en Bedrock (ej: anthropic.claude-3-sonnet-20240229-v1:0)
+            model_name (str): ID del modelo en Bedrock (ej: amazon.nova-micro-v1:0)
             temperature (float): Temperatura para la generación de respuestas
         """
         # Configurar la variable de entorno necesaria para langchain-aws
