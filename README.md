@@ -15,6 +15,7 @@ You'll need the following API keys depending on the model you wish to use:
 - OpenAI API Key
 - DeepSeek API Key (Optional)
 - Google Gemini API Key (Optional)
+- AWS Bedrock API Key (Optional, for Bedrock)
 
 Create a `.env` file in the root of your project with the following variables:
 
@@ -22,11 +23,13 @@ Create a `.env` file in the root of your project with the following variables:
 OPENAI_API_KEY=your_openai_key_here
 DEEPSEEK_API_KEY=your_deepseek_key_here
 GOOGLE_API_KEY=your_gemini_key_here
+AWS_BEARER_TOKEN_BEDROCK=your_bedrock_api_key_here
+AWS_REGION=us-east-1
 ```
 
 ## Key Features
 
-- **Multi-Model Support**: Seamlessly switch between OpenAI, DeepSeek, and Google Gemini models.
+- **Multi-Model Support**: Seamlessly switch between OpenAI, DeepSeek, Google Gemini, and Amazon Bedrock models.
 - **Conversational Agent**: Robust agent (`LangChainBot`) with native tool execution capabilities.
 - **Structured Classification**: Text classification with strongly typed outputs.
 - **Custom Tools**: Easy integration of custom tools via Pydantic and LangChain.
@@ -53,17 +56,18 @@ load_dotenv()
 # language_model = OpenAILanguageModel(api_key, model_name='gpt-4o-mini', temperature=1)
 
 # Example 2: Using Gemini
-api_key = os.getenv("GOOGLE_API_KEY")
-language_model = GeminiLanguageModel(api_key, model_name='gemini-3-flash-preview', temperature=1)
+# api_key = os.getenv("GOOGLE_API_KEY")
+# language_model = GeminiLanguageModel(api_key, model_name='gemini-3-flash-preview', temperature=1)
 
-# Embeddings (usually OpenAI is used for embeddings regardless of the LLM)
-embeddings = OpenAIEmbeddings(api_key=os.getenv("OPENAI_API_KEY"))
+# Example 3: Using Bedrock
+api_key = os.getenv("AWS_BEARER_TOKEN_BEDROCK")
+language_model = BedrockLanguageModel(api_key, region_name="us-east-1", model_name='amazon.nova-micro-v1:0', temperature=1)
 
 # Configure tools
 tools = [EmailTool()]
 
 # Create agent instance
-bot = LangChainBot(language_model, embeddings, instructions="You are an agent", tools=tools)
+bot = LangChainBot(language_model, instructions="You are an agent", tools=tools)
 
 # Load conversation history
 bot.load_conversation_history([Message(content="My name is Erley", is_bot=False)])
@@ -118,6 +122,7 @@ print(result)
 - **OpenAILanguageModel**: Wrapper for OpenAI language models
 - **DeepSeekLanguageModel**: Wrapper for DeepSeek language models
 - **GeminiLanguageModel**: Wrapper for Google Gemini models
+- **BedrockLanguageModel**: Wrapper for Amazon Bedrock models
 - **TextClassifier**: Text classification using structured output
 - **Message**: Message structure for conversation history
 - **ResponseModel**: Response structure from agent interactions

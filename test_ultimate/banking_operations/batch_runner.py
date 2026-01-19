@@ -23,6 +23,7 @@ TEST_CONFIGS = [
     {"bot_id": "6", "model": "gpt-4o-mini", "provider": "openai"}, # LangChainBot
     {"bot_id": "6", "model": "deepseek-chat", "provider": "deepseek"}, # LangChainBot with DeepSeek
     {"bot_id": "6", "model": "gemini-3-flash-preview", "provider": "gemini"}, # LangChainBot with Gemini
+    {"bot_id": "6", "model": "amazon.nova-micro-v1:0", "provider": "bedrock"}, # LangChainBot with Bedrock
 ]
 
 def resolve_bot_class(bot_id):
@@ -106,6 +107,12 @@ if __name__ == "__main__":
     if "gemini" in providers:
         if not os.getenv("GOOGLE_API_KEY"):
             print("❌ Error: GOOGLE_API_KEY requerida para configs con provider 'gemini'.")
+            sys.exit(1)
+
+    # Bedrock check
+    if "bedrock" in providers:
+        if not os.getenv("AWS_BEARER_TOKEN_BEDROCK"):
+            print("❌ Error: AWS_BEARER_TOKEN_BEDROCK requerida para configs con provider 'bedrock'.")
             sys.exit(1)
 
     run_batch()

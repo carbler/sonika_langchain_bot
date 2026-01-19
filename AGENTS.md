@@ -67,8 +67,9 @@ This project implements a unified `ILanguageModel` interface to support multiple
 | **OpenAI** | `OpenAILanguageModel` | `langchain_models.py` | `OPENAI_API_KEY` |
 | **DeepSeek** | `DeepSeekLanguageModel` | `langchain_models.py` | `DEEPSEEK_API_KEY` |
 | **Google Gemini** | `GeminiLanguageModel` | `langchain_models.py` | `GOOGLE_API_KEY` |
+| **Amazon Bedrock** | `BedrockLanguageModel` | `langchain_models.py` | `AWS_BEARER_TOKEN_BEDROCK` |
 
-> **Note for Agents**: When implementing new features, ensure compatibility with ALL three providers. Gemini, in particular, has strict requirements regarding system message placement (see `LangChainBot` implementation details).
+> **Note for Agents**: When implementing new features, ensure compatibility with ALL supported providers. Gemini, in particular, has strict requirements regarding system message placement (see `LangChainBot` implementation details). Embeddings are no longer used by the standard `LangChainBot` architecture.
 
 ---
 
@@ -92,6 +93,8 @@ Create a `.env` file in the root:
 OPENAI_API_KEY=sk-...
 DEEPSEEK_API_KEY=sk-...
 GOOGLE_API_KEY=AIza...
+AWS_BEARER_TOKEN_BEDROCK=...
+AWS_REGION=us-east-1
 ```
 
 ### 4. Workflow for AI Agents
